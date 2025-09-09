@@ -13,6 +13,7 @@ import logging
 import json
 import os
 from datetime import datetime
+import base64
 
 CONFIG_FILE = "smtp_config.json"
 
@@ -122,9 +123,39 @@ class TelegramSMTPServer(smtpd.SMTPServer):
         self.chat_id = chat_id
         self.logger = logger
 
+    def smtp_AUTH(self, arg):
+        """Обработка AUTH команды - принимаем любую аутентификацию"""
+        try:
+            self.logger.info("Получена команда AUTH, принимаем любые данные")
+            
+            if arg.startswith('PLAIN'):
+                # AUTH PLAIN аутентификация
+                return '334 '
+            elif arg.startswith('LOGIN'):
+                # AUTH LOGIN аутентификация  
+                return '334 VXNlcm5hbWU6'  # "Username:" в base64
+            else:
+                # Неизвестный тип - тоже принимаем
+                return '334 '
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка AUTH: {e}")
+            return '535 Authentication failed'
+
+    def smtp_HELO(self, arg):
+        """Обработка HELO команды"""
+        self.logger.info(f"HELO от {arg}")
+        return '250 Hello'
+
+    def smtp_EHLO(self, arg):
+        """Обработка EHLO команды"""
+        self.logger.info(f"EHLO от {arg}")
+        response = ['250-Hello', '250-AUTH PLAIN LOGIN', '250 8BITMIME']
+        return '\n'.join(response)
+
     def process_message(self, peer, mailfrom, rcpttos, data, **kwargs):
         """Обработка входящего email"""
-        self.logger.info(f"📧 Получено письмо от {mailfrom}")
+        self.logger.info(f"Получено письмо от {mailfrom} для {rcpttos}")
         
         try:
             if isinstance(data, bytes):
@@ -140,6 +171,71 @@ class TelegramSMTPServer(smtpd.SMTPServer):
             
         except Exception as e:
             self.logger.error(f"Ошибка обработки письма: {e}")
+
+    def collect_incoming_data(self, data):
+        """Переопределяем для обработки AUTH данных"""
+        try:
+            if hasattr(self, '_auth_stage'):
+                # Обрабатываем данные аутентификации
+                if self._auth_stage == 'username':
+                    self.logger.info("Получен username для AUTH")
+                    self._auth_stage = 'password'
+                    self.push('334 UGFzc3dvcmQ6')  # "Password:" в base64
+                    return
+                elif self._auth_stage == 'password':
+                    self.logger.info("Получен password для AUTH, аутентификация принята")
+                    self.push('235 Authentication successful')
+                    delattr(self, '_auth_stage')
+                    return
+            
+            # Обычная обработка данных
+            super().collect_incoming_data(data)
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка collect_incoming_data: {e}")
+            super().collect_incoming_data(data)
+
+    def found_terminator(self):
+        """Переопределяем для обработки команд"""
+        try:
+            line = self._emptystring.join(self._buffer).decode('utf-8', errors='ignore')
+            self._buffer = []
+            
+            # Обработка AUTH LOGIN по шагам
+            if hasattr(self, '_auth_stage'):
+                if self._auth_stage == 'start':
+                    self.logger.info("AUTH LOGIN: запрос username")
+                    self._auth_stage = 'username'
+                    self.push('334 VXNlcm5hbWU6')  # "Username:" в base64
+                    return
+                elif self._auth_stage == 'username':
+                    self.logger.info(f"AUTH LOGIN: получен username")
+                    self._auth_stage = 'password'  
+                    self.push('334 UGFzc3dvcmQ6')  # "Password:" в base64
+                    return
+                elif self._auth_stage == 'password':
+                    self.logger.info("AUTH LOGIN: получен password, аутентификация успешна")
+                    self.push('235 Authentication successful')
+                    delattr(self, '_auth_stage')
+                    return
+            
+            # Проверяем AUTH команды
+            if line.upper().startswith('AUTH LOGIN'):
+                self.logger.info("Начинаем AUTH LOGIN")
+                self._auth_stage = 'start'
+                self.push('334 VXNlcm5hbWU6')  # "Username:" в base64
+                return
+            elif line.upper().startswith('AUTH PLAIN'):
+                self.logger.info("AUTH PLAIN - принимаем любые данные")
+                self.push('235 Authentication successful')
+                return
+            
+            # Обычная обработка команд
+            super().found_terminator()
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка found_terminator: {e}")
+            super().found_terminator()
 
     def decode_mime_words(self, s):
         """Декодирование MIME заголовков"""
@@ -237,7 +333,7 @@ class SMTPBridgeGUI:
     def create_gui(self):
         """Создание GUI"""
         self.root = tk.Tk()
-        self.root.title("SMTP-Telegram мост")
+        self.root.title("SMTP-Telegram мост с AUTH")
         self.root.geometry("600x500")
         
         notebook = ttk.Notebook(self.root)
@@ -255,6 +351,18 @@ class SMTPBridgeGUI:
         """Вкладка настроек"""
         settings_frame = ttk.Frame(notebook)
         notebook.add(settings_frame, text="Настройки")
+        
+        # Инструкция
+        info_frame = ttk.LabelFrame(settings_frame, text="Настройки кассовой программы")
+        info_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        info_text = tk.Text(info_frame, height=4, wrap=tk.WORD)
+        info_text.pack(fill=tk.X, padx=5, pady=5)
+        info_text.insert(tk.END, """В кассовой программе укажите:
+SMTP сервер: localhost, Порт: 2525
+Логин: user (любой), Пароль: pass (любой)
+Шифрование: отключено""")
+        info_text.config(state=tk.DISABLED, bg='#f0f0f0')
         
         telegram_frame = ttk.LabelFrame(settings_frame, text="Настройки Telegram")
         telegram_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -321,8 +429,8 @@ class SMTPBridgeGUI:
         if self.bridge.start_server():
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"Запущено на {self.bridge.config['smtp_host']}:{self.bridge.config['smtp_port']}")
-            messagebox.showinfo("Успех", "SMTP сервер запущен!")
+            self.status_var.set(f"Запущено на {self.bridge.config['smtp_host']}:{self.bridge.config['smtp_port']} (с AUTH)")
+            messagebox.showinfo("Успех", "SMTP сервер с аутентификацией запущен!")
         else:
             messagebox.showerror("Ошибка", "Не удалось запустить сервер.\nПроверьте настройки Telegram.")
 
