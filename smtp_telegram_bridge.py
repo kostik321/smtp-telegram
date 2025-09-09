@@ -394,7 +394,7 @@ class FakeSSLSMTPServer:
                 continue
             elif line.startswith('Организации:'):
                 org_name = line.replace('Организации:', '').strip()
-                formatted_lines.append(f"🏢 **Організація:** {org_name}")
+                formatted_lines.append(f"🏢 **Organisation:** {org_name}")
                 continue
             elif line.startswith('Склады:'):
                 warehouse = line.replace('Склады:', '').strip()
@@ -450,7 +450,7 @@ class FakeSSLSMTPServer:
                         formatted_lines.append(f"   📦 Кількість: `{qty}`")
                         formatted_lines.append(f"   💵 Вартість: `{cost}`")
                         formatted_lines.append(f"   📈 Прибуток: `{profit}`")
-                        formatted_lines.append("   ────────────────────────────")
+                        # ВИДАЛЕНО підкреслення: formatted_lines.append("   ────────────────────────────")
                         continue
                     
                     # Звичайні дані (Сумма, Скидка, тощо)
