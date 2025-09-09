@@ -377,23 +377,161 @@ class FakeSSLSMTPServer:
         html_text = html_text.replace('&gt;', '>')
         html_text = html_text.replace('&quot;', '"')
         
-        # Очищення зайвих символів
+        # Очищення зайвих символів та покращене форматування
         html_text = re.sub(r' +', ' ', html_text)
         html_text = re.sub(r'\n\s*\n', '\n', html_text)
         html_text = re.sub(r' *\| *\|', ' |', html_text)
         
-        return html_text.strip()
+        # Покращення форматування для SAMPO звітів
+        formatted_text = self.format_sampo_report(html_text)
+        
+        return formatted_text.strip()
+    
+    def format_sampo_report(self, text):
+        """Спеціальне форматування для звітів SAMPO"""
+        # Перевіряємо чи це SAMPO звіт
+        if 'SAMPO Reports' not in text:
+            return text
+            
+        lines = text.split('\n')
+        formatted_lines = []
+        in_table = False
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Основна назва
+            if line == 'SAMPO Reports':
+                formatted_lines.append("🏪 **SAMPO REPORTS**")
+                continue
+            elif line == 'Отправка по команде пользователя.':
+                formatted_lines.append("📤 Відправка по команді користувача")
+                continue
+                
+            # Фільтр секція
+            if line == 'Фильтр':
+                formatted_lines.append("\n🔍 **ФІЛЬТР**")
+                continue
+            elif line.startswith('Организации:'):
+                org_name = line.replace('Организации:', '').strip()
+                formatted_lines.append(f"🏢 **Організація:** {org_name}")
+                continue
+            elif line.startswith('Склады:'):
+                warehouse = line.replace('Склады:', '').strip()
+                formatted_lines.append(f"🏪 **Склад:** {warehouse}")
+                continue
+                
+            # Зведений звіт
+            if line == 'Сводный отчет':
+                formatted_lines.append(f"\n📊 **ЗВЕДЕНИЙ ЗВІТ**")
+                continue
+            elif line.startswith('Период:'):
+                period = line.replace('Период:', '').strip()
+                formatted_lines.append(f"🗓 **Період:** {period}")
+                continue
+                
+            # Продажі секція
+            if line == 'ПРОДАЖИ':
+                formatted_lines.append(f"\n💰 **ПРОДАЖІ**")
+                continue
+            elif line == 'ВОЗВРАТЫ':
+                formatted_lines.append(f"\n📉 **ПОВЕРНЕННЯ**")
+                continue
+                
+            # Обробка рядків з даними (формат " Ключ | Значення |")
+            if '|' in line and line.count('|') >= 2:
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) >= 3 and parts[0] and parts[1]:
+                    key = parts[0]
+                    value = parts[1]
+                    
+                    # Визначення типу даних для емодзі
+                    if any(word in key.lower() for word in ['сумма', 'сума']):
+                        formatted_lines.append(f"💵 **{key}:** `{value}`")
+                    elif any(word in key.lower() for word in ['скидка', 'знижка']):
+                        formatted_lines.append(f"🏷️ **{key}:** `{value}`")
+                    elif any(word in key.lower() for word in ['прибыль', 'прибуток']):
+                        formatted_lines.append(f"📈 **{key}:** `{value}`")
+                    elif any(word in key.lower() for word in ['средний', 'середній']):
+                        formatted_lines.append(f"🧾 **{key}:** `{value}`")
+                    elif any(word in key.lower() for word in ['к-во', 'к-сть', 'чеков', 'чеків']):
+                        formatted_lines.append(f"🧾 **{key}:** `{value}`")
+                    elif any(word in key.lower() for word in ['убыток', 'збиток']):
+                        formatted_lines.append(f"📉 **{key}:** `{value}`")
+                    else:
+                        formatted_lines.append(f"📊 **{key}:** `{value}`")
+                    continue
+                    
+            # Звіт по товарах
+            if line == 'Отчет по товарам':
+                formatted_lines.append(f"\n🛒 **ЗВІТ ПО ТОВАРАХ**")
+                continue
+                
+            # Заголовок таблиці товарів
+            if '№' in line and 'Имя' in line and 'К-во' in line:
+                formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                formatted_lines.append("📋 **СПИСОК ТОВАРІВ:**")
+                formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                in_table = True
+                continue
+                
+            # Рядки товарів у таблиці
+            if in_table and '|' in line and line.strip().split('|')[0].strip().isdigit():
+                parts = [p.strip() for p in line.split('|') if p.strip()]
+                if len(parts) >= 4:
+                    try:
+                        num = parts[0]
+                        name = parts[1]
+                        qty = parts[2]
+                        cost = parts[3]
+                        profit = parts[4] if len(parts) > 4 else "—"
+                        
+                        # Скорочуємо назву якщо дуже довга
+                        if len(name) > 35:
+                            name = name[:32] + "..."
+                            
+                        formatted_lines.append(f"\n`{num:>2}.` **{name}**")
+                        formatted_lines.append(f"   📦 Кількість: `{qty}`")
+                        formatted_lines.append(f"   💵 Вартість: `{cost}`")
+                        formatted_lines.append(f"   📈 Прибуток: `{profit}`")
+                        formatted_lines.append("   ────────────────────────────")
+                        continue
+                    except (IndexError, ValueError):
+                        pass
+                        
+            # ВСЕГО рядок
+            if line.strip().startswith('|') and 'ВСЕГО' in line:
+                parts = [p.strip() for p in line.split('|') if p.strip()]
+                if len(parts) >= 3:
+                    formatted_lines.append("\n" + "═" * 40)
+                    formatted_lines.append(f"💰 **ВСЬОГО:** Сума: `{parts[1]}` | Прибуток: `{parts[2]}`")
+                    formatted_lines.append("═" * 40)
+                continue
+                
+            # Інші рядки без змін
+            if line not in ['', ' ']:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
     
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
+            # Логування для відстеження
+            self.logger.info(f"Початковий текст містить: {len(body)} символів")
+            self.logger.info(f"Перевірка на SAMPO: {'SAMPO Reports' in body}")
+            
             clean_body = self.clean_html(body)
             
-            header = "📧 *Звіт про продажі*\n\n"
-            header += f"*Від:* {sender}\n"
-            header += f"*Тема:* {subject}\n"
-            header += f"*Час:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-            header += "=" * 30 + "\n\n"
+            self.logger.info(f"Після форматування: {len(clean_body)} символів")
+            
+            header = "📊 **ЗВІТ SAMPO**\n\n"
+            header += f"👤 **Від:** {sender}\n"
+            header += f"📧 **Тема:** {subject}\n"
+            header += f"⏰ **Час:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+            header += "═" * 40 + "\n\n"
             
             max_length = 3000
             header_length = len(header)
