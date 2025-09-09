@@ -661,9 +661,17 @@ class SMTPBridgeApp:
                     for key, value in default.items():
                         if key not in config:
                             config[key] = value
+                    
+                    # Диагностика загрузки
+                    print(f"Конфигурация загружена из {CONFIG_FILE}")
+                    print(f"Token: {'*'*len(config.get('telegram_token', ''))} chars")
+                    print(f"Chat ID: {config.get('telegram_chat_id', 'empty')}")
+                    
                     return config
-            except:
-                pass
+            except Exception as e:
+                print(f"Ошибка загрузки конфига: {e}")
+        
+        print("Используется конфигурация по умолчанию")
         return default
     
     def save_config(self):
@@ -724,6 +732,7 @@ class SMTPBridgeApp:
         auto_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
         self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", True))
+        self.auto_start_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))  # Автозбереження
         ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
@@ -732,6 +741,7 @@ class SMTPBridgeApp:
         debug_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
         self.debug_files_var = tk.BooleanVar(value=self.config.get("debug_files", False))
+        self.debug_files_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))  # Автозбереження
         ttk.Checkbutton(debug_frame, text="Створювати відладочні файли (sampo_debug.txt, sampo_raw_debug.txt)", 
                        variable=self.debug_files_var).pack(anchor=tk.W)
         
