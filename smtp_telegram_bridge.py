@@ -17,12 +17,13 @@ import re
 CONFIG_FILE = "smtp_config.json"
 
 class FakeSSLSMTPServer:
-    def __init__(self, host='localhost', port=25, token='', chat_id='', logger=None):
+    def __init__(self, host='localhost', port=25, token='', chat_id='', logger=None, debug_files=True):
         self.host = host
         self.port = port
         self.token = token
         self.chat_id = chat_id
         self.logger = logger or logging.getLogger(__name__)
+        self.debug_files = debug_files  # Новий параметр для контролю створення відладочних файлів
         self.running = False
         self.server_socket = None
         
@@ -256,11 +257,12 @@ class FakeSSLSMTPServer:
                 
                 body = self.extract_body(msg)
                 
-                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики
-                with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
-                    f.write("=== RAW EMAIL BODY ===\n\n")
-                    f.write(body)
-                    f.write("\n\n" + "="*50 + "\n\n")
+                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики тільки якщо включено відладку
+                if self.debug_files:
+                    with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
+                        f.write("=== RAW EMAIL BODY ===\n\n")
+                        f.write(body)
+                        f.write("\n\n" + "="*50 + "\n\n")
                 
                 self.logger.info(f"Тема: {subject}")
                 self.logger.info(f"Розмір тіла: {len(body)} символів")
@@ -511,18 +513,21 @@ class FakeSSLSMTPServer:
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
-            # Тимчасово зберігаємо діагностику у файл
-            with open("sampo_debug.txt", "w", encoding="utf-8") as f:
-                f.write("=== ДІАГНОСТИКА SAMPO ЗВІТУ ===\n\n")
-                f.write("ПОЧАТКОВИЙ ТЕКСТ:\n")
-                f.write(body)
-                f.write("\n\n" + "="*50 + "\n\n")
-                
+            # Тимчасово зберігаємо діагностику у файл тільки якщо включено відладку
+            if self.debug_files:
+                with open("sampo_debug.txt", "w", encoding="utf-8") as f:
+                    f.write("=== ДІАГНОСТИКА SAMPO ЗВІТУ ===\n\n")
+                    f.write("ПОЧАТКОВИЙ ТЕКСТ:\n")
+                    f.write(body)
+                    f.write("\n\n" + "="*50 + "\n\n")
+                    
+                    clean_body = self.clean_html(body)
+                    
+                    f.write("ПІСЛЯ ФОРМАТУВАННЯ:\n")
+                    f.write(clean_body)
+                    f.write("\n\n" + "="*50 + "\n\n")
+            else:
                 clean_body = self.clean_html(body)
-                
-                f.write("ПІСЛЯ ФОРМАТУВАННЯ:\n")
-                f.write(clean_body)
-                f.write("\n\n" + "="*50 + "\n\n")
             
             header = "📊 **ЗВІТ SAMPO**\n\n"
             header += f"👤 **Від:** {sender}\n"
@@ -645,7 +650,8 @@ class SMTPBridgeApp:
             "telegram_chat_id": "",
             "smtp_host": "localhost", 
             "smtp_port": 25,
-            "auto_start": True
+            "auto_start": True,
+            "debug_files": False  # Новий параметр - за замовчуванням вимкнено
         }
         
         if os.path.exists(CONFIG_FILE):
@@ -672,7 +678,7 @@ class SMTPBridgeApp:
         """Створення інтерфейсу"""
         self.root = tk.Tk()
         self.root.title("SMTP-Telegram міст для касових звітів SAMPO")
-        self.root.geometry("800x400")
+        self.root.geometry("800x450")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -721,6 +727,17 @@ class SMTPBridgeApp:
         ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
+        # Відладочні файли
+        debug_frame = ttk.Frame(settings_frame)
+        debug_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
+        
+        self.debug_files_var = tk.BooleanVar(value=self.config.get("debug_files", False))
+        ttk.Checkbutton(debug_frame, text="Створювати відладочні файли (sampo_debug.txt, sampo_raw_debug.txt)", 
+                       variable=self.debug_files_var).pack(anchor=tk.W)
+        
+        ttk.Label(debug_frame, text="Вимкніть для економії місця, увімкніть тільки при проблемах з форматуванням", 
+                 font=('TkDefaultFont', 8), foreground='gray').pack(anchor=tk.W, padx=20)
+        
         settings_frame.columnconfigure(1, weight=1)
         
         # Кнопки управління
@@ -764,7 +781,8 @@ class SMTPBridgeApp:
                 port=port,
                 token=self.config["telegram_token"],
                 chat_id=self.config["telegram_chat_id"],
-                logger=self.logger
+                logger=self.logger,
+                debug_files=self.config.get("debug_files", False)  # Передаємо налаштування відладки
             )
             
             self.server_thread = threading.Thread(target=self.server.start, daemon=True)
@@ -772,7 +790,9 @@ class SMTPBridgeApp:
             
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} - готовий до прийому звітів")
+            
+            debug_status = "з відладкою" if self.config.get("debug_files", False) else "без відладки"
+            self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} ({debug_status}) - готовий до прийому звітів")
             
         except ValueError:
             messagebox.showerror("Помилка", "Некоректний порт!")
@@ -796,6 +816,7 @@ class SMTPBridgeApp:
             self.config["telegram_chat_id"] = self.chat_id_var.get().strip()
             self.config["smtp_port"] = int(self.port_var.get())
             self.config["auto_start"] = self.auto_start_var.get()
+            self.config["debug_files"] = self.debug_files_var.get()  # Зберігаємо налаштування відладки
             
             self.save_config()
             messagebox.showinfo("Успіх", "Налаштування збережено!")
