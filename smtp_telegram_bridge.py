@@ -256,6 +256,12 @@ class FakeSSLSMTPServer:
                 
                 body = self.extract_body(msg)
                 
+                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики
+                with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
+                    f.write("=== RAW EMAIL BODY ===\n\n")
+                    f.write(body)
+                    f.write("\n\n" + "="*50 + "\n\n")
+                
                 self.logger.info(f"Тема: {subject}")
                 self.logger.info(f"Розмір тіла: {len(body)} символів")
                 
