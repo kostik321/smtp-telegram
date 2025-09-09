@@ -1,0 +1,4 @@
+requests>=2.25.1
+pillow>=8.0.0
+pystray>=0.17.0
+pyinstaller>=4.5
