@@ -27,7 +27,7 @@ class FakeSSLSMTPServer:
         self.server_socket = None
         
     def start(self):
-        """Запуск SMTP серверу"""
+        """Запуск SMTP сервера"""
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -51,7 +51,7 @@ class FakeSSLSMTPServer:
                     
                 except socket.error:
                     if self.running:
-                        self.logger.error("Помилка сокету")
+                        self.logger.error("Помилка сокета")
                     break
                     
         except Exception as e:
@@ -86,7 +86,7 @@ class FakeSSLSMTPServer:
             while True:
                 try:
                     sock.settimeout(30)
-                    data = sock.recv(4096)  # Збільшений буфер
+                    data = sock.recv(4096)
                     
                     if not data:
                         break
@@ -102,16 +102,14 @@ class FakeSSLSMTPServer:
                     self.logger.info(f"Отримано команду: {command}")
                     
                     if in_data_mode:
-                        # Обробка даних листа порядково
                         lines = command.split('\n')
                         for line in lines:
                             line = line.strip('\r')
                             if line == ".":
-                                # Кінець даних листа
                                 in_data_mode = False
                                 self.logger.info("Отримано термінатор даних '.'")
                                 try:
-                                    self.send_response(sock, "250 2.0.0 Message accepted for delivery")
+                                    self.send_response(sock, "250 2.0.0 Повідомлення прийнято для доставки")
                                     self.process_email(email_data, mail_from, rcpt_to)
                                     email_data = ""
                                     mail_from = ""
@@ -119,24 +117,23 @@ class FakeSSLSMTPServer:
                                     self.logger.info("Лист успішно оброблено")
                                 except Exception as e:
                                     self.logger.error(f"Помилка обробки листа: {e}")
-                                    self.send_response(sock, "450 4.0.0 Temporary failure")
+                                    self.send_response(sock, "450 4.0.0 Тимчасова помилка")
                                 break
                             else:
                                 email_data += line + "\n"
                         continue
                     
-                    # Обробка SMTP команд
                     cmd_parts = command.split()
                     cmd = cmd_parts[0].upper() if cmd_parts else ""
                     
                     if cmd == "HELO":
-                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "unknown"
-                        self.send_response(sock, f"250 localhost Hello {hostname}")
+                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "невідомий"
+                        self.send_response(sock, f"250 localhost Привіт {hostname}")
                         
                     elif cmd == "EHLO":
-                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "unknown"
+                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "невідомий"
                         responses = [
-                            f"250-localhost Hello {hostname}",
+                            f"250-localhost Привіт {hostname}",
                             "250-AUTH LOGIN PLAIN",
                             "250-8BITMIME", 
                             "250-SIZE 52428800",
@@ -153,18 +150,18 @@ class FakeSSLSMTPServer:
                             self.send_response(sock, "334 VXNlcm5hbWU6")
                         elif auth_type == "PLAIN":
                             if len(cmd_parts) > 2:
-                                self.send_response(sock, "235 2.7.0 Authentication successful")
+                                self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                             else:
                                 self.send_response(sock, "334 ")
                         else:
-                            self.send_response(sock, "235 2.7.0 Authentication successful")
+                            self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                             
                     elif auth_stage == "username":
                         try:
                             username = base64.b64decode(command).decode('utf-8', errors='ignore')
-                            self.logger.info(f"Ім'я користувача: {username}")
+                            self.logger.info(f"Користувач: {username}")
                         except:
-                            self.logger.info(f"Ім'я користувача (raw): {command}")
+                            self.logger.info(f"Користувач (необроблений): {command}")
                         auth_stage = "password"
                         self.send_response(sock, "334 UGFzc3dvcmQ6")
                         
@@ -173,31 +170,31 @@ class FakeSSLSMTPServer:
                             password = base64.b64decode(command).decode('utf-8', errors='ignore')
                             self.logger.info(f"Пароль: {password}")
                         except:
-                            self.logger.info(f"Пароль (raw): {command}")
+                            self.logger.info(f"Пароль (необроблений): {command}")
                         auth_stage = None
-                        self.send_response(sock, "235 2.7.0 Authentication successful")
+                        self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                         
                     elif cmd == "MAIL":
                         if "FROM:" in command.upper():
                             mail_from = command.split("FROM:", 1)[1].strip().strip("<>")
-                            self.logger.info(f"Відправник: {mail_from}")
-                        self.send_response(sock, "250 2.1.0 Ok")
+                            self.logger.info(f"Лист від: {mail_from}")
+                        self.send_response(sock, "250 2.1.0 Добре")
                         
                     elif cmd == "RCPT":
                         if "TO:" in command.upper():
                             rcpt = command.split("TO:", 1)[1].strip().strip("<>")
                             rcpt_to.append(rcpt)
                             self.logger.info(f"Отримувач: {rcpt}")
-                        self.send_response(sock, "250 2.1.5 Ok")
+                        self.send_response(sock, "250 2.1.5 Добре")
                         
                     elif cmd == "DATA":
-                        self.send_response(sock, "354 End data with <CR><LF>.<CR><LF>")
+                        self.send_response(sock, "354 Закінчіть дані з <CR><LF>.<CR><LF>")
                         in_data_mode = True
                         email_data = ""
                         self.logger.info("Перехід в режим отримання даних листа")
                         
                     elif cmd == "QUIT":
-                        self.send_response(sock, "221 2.0.0 Bye")
+                        self.send_response(sock, "221 2.0.0 До побачення")
                         break
                         
                     elif cmd == "RSET":
@@ -206,28 +203,28 @@ class FakeSSLSMTPServer:
                         rcpt_to = []
                         in_data_mode = False
                         auth_stage = None
-                        self.send_response(sock, "250 2.0.0 Ok")
+                        self.send_response(sock, "250 2.0.0 Добре")
                         
                     elif cmd == "NOOP":
-                        self.send_response(sock, "250 2.0.0 Ok")
+                        self.send_response(sock, "250 2.0.0 Добре")
                         
                     elif cmd == "HELP":
-                        self.send_response(sock, "214 2.0.0 Help available")
+                        self.send_response(sock, "214 2.0.0 Допомога доступна")
                         
                     else:
                         self.logger.info(f"Невідома команда: {command}")
-                        self.send_response(sock, "250 2.0.0 Ok")
+                        self.send_response(sock, "250 2.0.0 Добре")
                         
                 except socket.timeout:
-                    self.logger.info("Таймаут з'єднання")
+                    self.logger.info("Тайм-аут з'єднання")
                     break
                 except socket.error as e:
-                    self.logger.info(f"Помилка сокету: {e}")
+                    self.logger.info(f"Помилка сокета: {e}")
                     break
                 except Exception as e:
                     self.logger.error(f"Помилка обробки команди: {e}")
                     try:
-                        self.send_response(sock, "500 5.0.0 Command error")
+                        self.send_response(sock, "500 5.0.0 Помилка команди")
                     except:
                         pass
                     
@@ -257,19 +254,17 @@ class FakeSSLSMTPServer:
                 subject = self.decode_header(msg.get('Subject', 'Без теми'))
                 sender = self.decode_header(msg.get('From', mail_from or 'Невідомий відправник'))
                 
-                # Витягування тіла листа з обробкою кодувань
                 body = self.extract_body(msg)
                 
                 self.logger.info(f"Тема: {subject}")
                 self.logger.info(f"Від: {sender}")
                 self.logger.info(f"Розмір тіла: {len(body)} символів")
                 
-                # Відправка в Telegram з розбиттям на частини
                 self.send_to_telegram(subject, sender, body)
                 
             except Exception as e:
                 self.logger.error(f"Помилка парсингу email: {e}")
-                self.send_to_telegram("Сирі дані листа", mail_from or "unknown", email_data[:3000])
+                self.send_to_telegram("Необроблені дані листа", mail_from or "невідомо", email_data[:3000])
             
         except Exception as e:
             self.logger.error(f"Помилка обробки листа: {e}")
@@ -310,7 +305,6 @@ class FakeSSLSMTPServer:
                         charset = part.get_content_charset() or 'utf-8'
                         payload = part.get_payload(decode=True)
                         if isinstance(payload, bytes):
-                            # Спробуємо різні кодування для українських кас
                             for encoding in [charset, 'windows-1251', 'utf-8', 'cp1251']:
                                 try:
                                     body_text = payload.decode(encoding, errors='ignore')
@@ -324,7 +318,6 @@ class FakeSSLSMTPServer:
                 charset = msg.get_content_charset() or 'utf-8'
                 payload = msg.get_payload(decode=True)
                 if isinstance(payload, bytes):
-                    # Спробуємо різні кодування
                     for encoding in [charset, 'windows-1251', 'utf-8', 'cp1251']:
                         try:
                             body_text = payload.decode(encoding, errors='ignore')
@@ -334,7 +327,6 @@ class FakeSSLSMTPServer:
                 else:
                     body_text = str(payload)
             
-            # Очищення HTML тегів
             body_text = self.clean_html(body_text)
             
             return body_text if body_text.strip() else "Порожній вміст листа"
@@ -342,7 +334,7 @@ class FakeSSLSMTPServer:
         except Exception as e:
             self.logger.error(f"Помилка витягування тіла листа: {e}")
         
-        return "Не вдалося витягнути вміст листа"
+        return "Не вдалося витягти вміст листа"
     
     def clean_html(self, html_text):
         """Очищення HTML тегів та форматування"""
@@ -386,45 +378,39 @@ class FakeSSLSMTPServer:
         html_text = html_text.replace('&quot;', '"')
         
         # Очищення зайвих символів
-        html_text = re.sub(r' +', ' ', html_text)  # Множинні пробіли
-        html_text = re.sub(r'\n\s*\n', '\n', html_text)  # Порожні рядки
-        html_text = re.sub(r' *\| *\|', ' |', html_text)  # Подвійні розділювачі
+        html_text = re.sub(r' +', ' ', html_text)
+        html_text = re.sub(r'\n\s*\n', '\n', html_text)
+        html_text = re.sub(r' *\| *\|', ' |', html_text)
         
         return html_text.strip()
     
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
-            # Очищення HTML тегів
             clean_body = self.clean_html(body)
             
-            header = "📊 *Звіт SAMPO*\n\n"
+            header = "📧 *Звіт про продажі*\n\n"
             header += f"*Від:* {sender}\n"
             header += f"*Тема:* {subject}\n"
             header += f"*Час:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-            header += "=" * 40 + "\n\n"
+            header += "=" * 30 + "\n\n"
             
-            # Максимальна довжина для одного повідомлення (залишаємо місце для заголовка)
-            max_length = 3500
+            max_length = 3000
             header_length = len(header)
             available_length = max_length - header_length
             
             if len(clean_body) <= available_length:
-                # Відправляємо одним повідомленням
                 message = header + clean_body
                 self.send_telegram_message(message, 1, 1)
             else:
-                # Розбиваємо на частини
                 parts = self.split_message(clean_body, available_length)
                 
-                # Відправляємо першу частину з заголовком
                 first_message = header + parts[0]
                 if len(parts) > 1:
                     first_message += f"\n\n*[Частина 1 з {len(parts)}]*"
                 
                 self.send_telegram_message(first_message, 1, len(parts))
                 
-                # Відправляємо решту частин
                 for i, part in enumerate(parts[1:], 2):
                     part_message = f"*[Частина {i} з {len(parts)}]*\n\n{part}"
                     self.send_telegram_message(part_message, i, len(parts))
@@ -440,17 +426,14 @@ class FakeSSLSMTPServer:
         parts = []
         current_part = ""
         
-        # Розбиваємо по рядках
         lines = text.split('\n')
         
         for line in lines:
-            # Якщо додавання рядка перевищить ліміт
             if len(current_part) + len(line) + 1 > max_length:
                 if current_part:
                     parts.append(current_part.strip())
                     current_part = line
                 else:
-                    # Рядок занадто довгий, розбиваємо його
                     while len(line) > max_length:
                         parts.append(line[:max_length].strip())
                         line = line[max_length:]
@@ -461,7 +444,6 @@ class FakeSSLSMTPServer:
                 else:
                     current_part = line
         
-        # Додаємо останню частину
         if current_part:
             parts.append(current_part.strip())
         
@@ -484,7 +466,6 @@ class FakeSSLSMTPServer:
             else:
                 self.logger.error(f"❌ Помилка Telegram API (частина {part_num}): {response.text}")
                 
-            # Невелика затримка між повідомленнями
             if part_num < total_parts:
                 import time
                 time.sleep(0.5)
@@ -507,7 +488,6 @@ class SMTPBridgeApp:
         self.server = None
         self.server_thread = None
         
-        # Логування
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -520,12 +500,11 @@ class SMTPBridgeApp:
         
         self.create_gui()
         
-        # Системний трей
         self.tray_icon = None
         
-        # Автозапуск якщо налаштовано
+        # Автозапуск сервера через 2 секунди після запуску
         if self.config.get("auto_start", True):
-            self.root.after(2000, self.auto_start_server)  # Збільшена затримка
+            self.root.after(2000, self.auto_start_server)
     
     def load_config(self):
         """Завантаження конфігурації"""
@@ -560,24 +539,23 @@ class SMTPBridgeApp:
     def create_gui(self):
         """Створення інтерфейсу"""
         self.root = tk.Tk()
-        self.root.title("SMTP-Telegram міст для SAMPO звітів")
+        self.root.title("SMTP-Telegram міст для касових звітів SAMPO")
         self.root.geometry("800x750")
         
-        # Обробка закриття вікна
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # Інформація
-        info_frame = ttk.LabelFrame(self.root, text="SMTP-Telegram міст для SAMPO касових звітів")
+        info_frame = ttk.LabelFrame(self.root, text="SMTP-Telegram міст для касових звітів SAMPO")
         info_frame.pack(fill=tk.X, padx=10, pady=5)
         
         info_text = tk.Text(info_frame, height=5, wrap=tk.WORD)
         info_text.pack(fill=tk.X, padx=5, pady=5)
         info_text.insert(tk.END, 
-            "🏪 Приймає звіти від касових апаратів SAMPO через SMTP і відправляє в Telegram.\n"
-            "📱 Довгі звіти автоматично розбиваються на декілька повідомлень.\n" 
-            "🧹 HTML теги очищуються, підтримується кодування windows-1251.\n"
-            "⚙️ В касі SAMPO: сервер localhost, порт 25, логін/пароль будь-які.\n"
-            "🚀 Автозапуск сервера при старті програми включено за замовчуванням."
+            "Приймає звіти від касових апаратів SAMPO через SMTP та відправляє в Telegram.\n"
+            "Довгі звіти автоматично розбиваються на кілька повідомлень для зручності читання.\n"
+            "HTML теги очищаються, підтримується кодування windows-1251 для українських кас.\n"
+            "Автоматично запускається на порту 25 при старті програми.\n"
+            "В касі налаштуйте: localhost:25, логін/пароль будь-які або порожні"
         )
         info_text.config(state=tk.DISABLED, bg='#f0f0f0')
         
@@ -586,29 +564,29 @@ class SMTPBridgeApp:
         settings_frame.pack(fill=tk.X, padx=10, pady=5)
         
         # Token
-        ttk.Label(settings_frame, text="Bot Token:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(settings_frame, text="Telegram Bot Token:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         self.token_var = tk.StringVar(value=self.config["telegram_token"])
         ttk.Entry(settings_frame, textvariable=self.token_var, width=50, show="*").grid(row=0, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Chat ID
-        ttk.Label(settings_frame, text="Chat ID:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(settings_frame, text="Telegram Chat ID:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.chat_id_var = tk.StringVar(value=self.config["telegram_chat_id"])
         ttk.Entry(settings_frame, textvariable=self.chat_id_var, width=50).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Порт
-        ttk.Label(settings_frame, text="Порт:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(settings_frame, text="SMTP Порт:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
         self.port_var = tk.StringVar(value=str(self.config["smtp_port"]))
         port_entry = ttk.Entry(settings_frame, textvariable=self.port_var, width=10)
         port_entry.grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
         
-        ttk.Label(settings_frame, text="(25 - стандартний SMTP, 587 - STARTTLS)").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(settings_frame, text="(25-стандартний SMTP, 587-STARTTLS)").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
         
         # Автозапуск
         auto_frame = ttk.Frame(settings_frame)
         auto_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
         self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", True))
-        ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера на порту 25 при відкритті програми", 
+        ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
         settings_frame.columnconfigure(1, weight=1)
@@ -628,13 +606,13 @@ class SMTPBridgeApp:
         ttk.Button(buttons_frame, text="Очистити логи", command=self.clear_logs).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Копіювати всі логи", command=self.copy_all_logs).pack(side=tk.LEFT, padx=5)
         
-        # Кнопки роботи з треєм та автозавантаженням
+        # Кнопки роботи з трей та автозавантаженням
         tray_buttons_frame = ttk.Frame(self.root)
         tray_buttons_frame.pack(fill=tk.X, padx=10, pady=5)
         
         ttk.Button(tray_buttons_frame, text="Згорнути в трей", command=self.minimize_to_tray).pack(side=tk.LEFT, padx=5)
         ttk.Button(tray_buttons_frame, text="Додати в автозавантаження", command=self.add_to_startup).pack(side=tk.LEFT, padx=5)
-        ttk.Button(tray_buttons_frame, text="Видалити з автозавантаження", command=self.remove_from_startup).pack(side=tk.LEFT, padx=5)
+        ttk.Button(tray_buttons_frame, text="Прибрати з автозавантаження", command=self.remove_from_startup).pack(side=tk.LEFT, padx=5)
         
         # Логи
         logs_frame = ttk.LabelFrame(self.root, text="Логи роботи")
@@ -645,7 +623,7 @@ class SMTPBridgeApp:
         
         # Статус
         self.status_var = tk.StringVar()
-        self.status_var.set("Зупинено")
+        self.status_var.set("Зупинено - очікування автозапуску...")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
@@ -674,9 +652,13 @@ class SMTPBridgeApp:
             
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"SMTP сервер запущено на localhost:{port}")
+            self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} - готовий до прийому звітів")
             
-            messagebox.showinfo("Успіх", f"SMTP сервер запущено на порту {port}!\nДовгі звіти SAMPO будуть розбиватися на частини автоматично.")
+            messagebox.showinfo("Успіх", 
+                f"SMTP сервер запущено на порту {port}!\n\n"
+                f"Тепер каса SAMPO може відправляти звіти на localhost:{port}\n"
+                f"Довгі звіти будуть автоматично розбиватися на частини для зручності читання в Telegram."
+            )
             
         except ValueError:
             messagebox.showerror("Помилка", "Некоректний порт!")
@@ -691,7 +673,7 @@ class SMTPBridgeApp:
         
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
-        self.status_var.set("Зупинено")
+        self.status_var.set("❌ Зупинено")
     
     def save_settings(self):
         """Збереження налаштувань"""
@@ -722,7 +704,11 @@ class SMTPBridgeApp:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {
                 'chat_id': chat_id,
-                'text': f"🧪 Тестове повідомлення\n\nЧас: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\nSMTP-Telegram міст для SAMPO готовий до роботи!\nДовгі звіти будуть розбиватися на частини."
+                'text': f"🧪 Тестове повідомлення від SAMPO Reports\n\n"
+                       f"Час: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+                       f"SMTP-Telegram міст готовий до роботи!\n"
+                       f"Довгі звіти будуть розбиватися на частини автоматично.\n\n"
+                       f"Організація: Фоп Вараксіна-Задорожна Валентина Вікторівна"
             }
             
             response = requests.post(url, data=payload, timeout=10)
@@ -736,16 +722,13 @@ class SMTPBridgeApp:
             messagebox.showerror("Помилка", f"Помилка підключення: {e}")
     
     def clear_logs(self):
-        """Повне очищення логів"""
+        """Повна очистка логів"""
         try:
-            # Очищення вікна логів
             self.log_text.delete(1.0, tk.END)
             
-            # Видалення файлу логів
             if os.path.exists('smtp_bridge.log'):
                 os.remove('smtp_bridge.log')
                 
-            # Створення нового порожнього логу
             with open('smtp_bridge.log', 'w', encoding='utf-8') as f:
                 f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - Логи очищено\n")
             
@@ -756,27 +739,24 @@ class SMTPBridgeApp:
             messagebox.showerror("Помилка", f"Помилка очищення логів: {e}")
     
     def copy_all_logs(self):
-        """Копіювання всіх логів в буфер обміну"""
+        """Копіювання всіх логів у буфер обміну"""
         try:
             logs_content = ""
             
-            # Отримуємо логи з файлу (більш повна версія)
             if os.path.exists('smtp_bridge.log'):
                 with open('smtp_bridge.log', 'r', encoding='utf-8') as f:
                     logs_content = f.read()
             
-            # Якщо файлу немає, беремо з вікна
             if not logs_content:
                 logs_content = self.log_text.get(1.0, tk.END)
             
             if logs_content.strip():
-                # Копіюємо в буфер обміну
                 self.root.clipboard_clear()
                 self.root.clipboard_append(logs_content)
-                self.root.update()  # Обов'язково для Windows
+                self.root.update()
                 
                 lines_count = len(logs_content.split('\n'))
-                messagebox.showinfo("Успіх", f"Всі логи скопійовано в буфер обміну!\nРядків: {lines_count}")
+                messagebox.showinfo("Успіх", f"Всі логи скопійовано у буфер обміну!\nРядків: {lines_count}")
             else:
                 messagebox.showwarning("Попередження", "Логи порожні, нічого копіювати")
                 
@@ -792,13 +772,11 @@ class SMTPBridgeApp:
             if self.tray_icon:
                 return
                 
-            # Створення іконки для трею
             image = Image.new('RGB', (64, 64), color=(0, 100, 200))
             draw = ImageDraw.Draw(image)
             draw.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
             draw.text((24, 28), "S", fill=(0, 0, 0), anchor="mm")
             
-            # Створення меню
             menu = pystray.Menu(
                 pystray.MenuItem("Показати вікно", self.show_from_tray),
                 pystray.MenuItem("Зупинити сервер", self.stop_server_tray),
@@ -807,21 +785,18 @@ class SMTPBridgeApp:
                 pystray.MenuItem("Вихід", self.quit_from_tray)
             )
             
-            # Створення іконки трею
             self.tray_icon = pystray.Icon(
                 "smtp_bridge", 
                 image, 
-                "SMTP-Telegram міст", 
+                "SMTP-Telegram міст SAMPO", 
                 menu
             )
             
-            # Приховування вікна
             self.root.withdraw()
             
-            # Запуск трею в окремому потоці
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
             
-            self.logger.info("Програму згорнуто в системний трей")
+            self.logger.info("Програма згорнута в системний трей")
             
         except ImportError:
             messagebox.showerror("Помилка", "Бібліотека pystray не знайдена!\nСистемний трей недоступний.")
@@ -857,20 +832,17 @@ class SMTPBridgeApp:
             import winreg
             import sys
             
-            # Шлях до виконуваного файлу
             exe_path = sys.executable if hasattr(sys, 'frozen') else sys.argv[0]
             exe_path = os.path.abspath(exe_path)
             
-            # Ключ реєстру для автозавантаження
             key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
             
-            # Додавання запису
             winreg.SetValueEx(key, "SMTP-Telegram-Bridge-SAMPO", 0, winreg.REG_SZ, exe_path)
             winreg.CloseKey(key)
             
-            messagebox.showinfo("Успіх", "Програму додано в автозавантаження Windows!")
-            self.logger.info("Програму додано в автозавантаження")
+            messagebox.showinfo("Успіх", "Програма додана в автозавантаження Windows!")
+            self.logger.info("Програма додана в автозавантаження")
             
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося додати в автозавантаження: {e}")
@@ -881,15 +853,13 @@ class SMTPBridgeApp:
         try:
             import winreg
             
-            # Ключ реєстру для автозавантаження
             key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
             
             try:
-                # Видалення запису
                 winreg.DeleteValue(key, "SMTP-Telegram-Bridge-SAMPO")
-                messagebox.showinfo("Успіх", "Програму видалено з автозавантаження Windows!")
-                self.logger.info("Програму видалено з автозавантаження")
+                messagebox.showinfo("Успіх", "Програма видалена з автозавантаження Windows!")
+                self.logger.info("Програма видалена з автозавантаження")
             except FileNotFoundError:
                 messagebox.showinfo("Інформація", "Програма не була в автозавантаженні")
             
@@ -909,9 +879,9 @@ class SMTPBridgeApp:
             "Скасувати - Залишитися у вікні"
         )
         
-        if result is True:  # Так - згорнути в трей
+        if result is True:
             self.minimize_to_tray()
-        elif result is False:  # Ні - закрити
+        elif result is False:
             if self.tray_icon:
                 self.tray_icon.stop()
             self.stop_server()
@@ -921,15 +891,15 @@ class SMTPBridgeApp:
         """Автоматичний запуск сервера"""
         if not self.server and self.config.get("auto_start", True):
             if self.config["telegram_token"] and self.config["telegram_chat_id"]:
-                self.logger.info("Автозапуск SMTP сервера на порту 25...")
-                # Встановлюємо порт 25 для автозапуску
-                self.port_var.set("25")
+                self.logger.info("Автозапуск SMTP сервера...")
                 self.start_server()
             else:
-                self.logger.warning("Автозапуск пропущено - не вказано Token або Chat ID")
+                self.status_var.set("❌ Автозапуск неможливий - не вказано Token або Chat ID")
                 messagebox.showwarning("Попередження", 
-                    "Автозапуск SMTP сервера пропущено!\n"
-                    "Вкажіть Bot Token та Chat ID, потім збережіть налаштування.")
+                    "Автозапуск SMTP сервера неможливий!\n\n"
+                    "Будь ласка, введіть Telegram Bot Token та Chat ID у налаштуваннях, "
+                    "збережіть їх, а потім запустіть сервер вручну або перезапустіть програму."
+                )
     
     def refresh_logs(self):
         """Автооновлення логів"""
@@ -938,7 +908,6 @@ class SMTPBridgeApp:
                 with open('smtp_bridge.log', 'r', encoding='utf-8') as f:
                     logs = f.readlines()
                     
-                # Показуємо тільки останні 100 рядків
                 recent_logs = logs[-100:] if len(logs) > 100 else logs
                 
                 current_content = self.log_text.get(1.0, tk.END)
@@ -951,11 +920,10 @@ class SMTPBridgeApp:
         except:
             pass
         
-        # Оновлюємо кожні 2 секунди
         self.root.after(2000, self.refresh_logs)
     
     def run(self):
-        """Запуск додатку"""
+        """Запуск застосунку"""
         self.root.mainloop()
 
 if __name__ == "__main__":
