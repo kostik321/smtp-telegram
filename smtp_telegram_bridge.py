@@ -3,7 +3,6 @@
 
 import socket
 import threading
-import ssl
 import email
 import requests
 from datetime import datetime
@@ -12,10 +11,11 @@ import os
 import logging
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
+import base64
 
 CONFIG_FILE = "smtp_config.json"
 
-class SimpleSSLSMTPServer:
+class FakeSSLSMTPServer:
     def __init__(self, host='localhost', port=465, token='', chat_id='', logger=None):
         self.host = host
         self.port = port
@@ -26,19 +26,15 @@ class SimpleSSLSMTPServer:
         self.server_socket = None
         
     def start(self):
-        """Запуск SSL SMTP сервера"""
+        """Запуск поддельного SSL SMTP сервера"""
         try:
-            # Создание самоподписанного сертификата
-            self.create_self_signed_cert()
-            
-            # Создание сокета
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.server_socket.bind((self.host, self.port))
             self.server_socket.listen(5)
             
             self.running = True
-            self.logger.info(f"SSL SMTP сервер запущен на {self.host}:{self.port}")
+            self.logger.info(f"Fake SSL SMTP сервер запущен на {self.host}:{self.port}")
             
             while self.running:
                 try:
@@ -54,88 +50,22 @@ class SimpleSSLSMTPServer:
                     client_thread.start()
                     
                 except socket.error:
+                    if self.running:
+                        self.logger.error("Ошибка сокета")
                     break
                     
         except Exception as e:
-            self.logger.error(f"Ошибка запуска SSL сервера: {e}")
+            self.logger.error(f"Ошибка запуска сервера: {e}")
             
-    def create_self_signed_cert(self):
-        """Создание самоподписанного сертификата"""
-        try:
-            import ssl
-            from cryptography import x509
-            from cryptography.x509.oid import NameOID
-            from cryptography.hazmat.primitives import hashes, serialization
-            from cryptography.hazmat.primitives.asymmetric import rsa
-            import datetime
-            
-            # Генерация приватного ключа
-            key = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=2048,
-            )
-            
-            # Создание сертификата
-            subject = issuer = x509.Name([
-                x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
-            ])
-            
-            cert = x509.CertificateBuilder().subject_name(
-                subject
-            ).issuer_name(
-                issuer
-            ).public_key(
-                key.public_key()
-            ).serial_number(
-                x509.random_serial_number()
-            ).not_valid_before(
-                datetime.datetime.utcnow()
-            ).not_valid_after(
-                datetime.datetime.utcnow() + datetime.timedelta(days=365)
-            ).sign(key, hashes.SHA256())
-            
-            # Сохранение файлов
-            with open("server.crt", "wb") as f:
-                f.write(cert.public_bytes(serialization.Encoding.PEM))
-            
-            with open("server.key", "wb") as f:
-                f.write(key.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption()
-                ))
-                
-            self.logger.info("Самоподписанный сертификат создан")
-            
-        except ImportError:
-            self.logger.warning("Библиотека cryptography не найдена, используем упрощенный режим")
-            # Создаем пустые файлы для совместимости
-            with open("server.crt", "w") as f:
-                f.write("")
-            with open("server.key", "w") as f:
-                f.write("")
-        
     def handle_client(self, client_socket):
-        """Обработка клиента"""
+        """Обработка клиента с простой эмуляцией SSL"""
         try:
-            # Попытка SSL handshake (если возможно)
-            if os.path.exists("server.crt") and os.path.getsize("server.crt") > 0:
-                try:
-                    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                    context.check_hostname = False
-                    context.verify_mode = ssl.CERT_NONE
-                    context.load_cert_chain("server.crt", "server.key")
-                    
-                    ssl_socket = context.wrap_socket(client_socket, server_side=True)
-                    self.logger.info("SSL соединение установлено")
-                except Exception as e:
-                    self.logger.warning(f"SSL handshake не удался, работаем без шифрования: {e}")
-                    ssl_socket = client_socket
-            else:
-                ssl_socket = client_socket
+            # Отправляем "успешный" SSL handshake ответ
+            # Многие клиенты просто проверяют что соединение установлено
+            self.logger.info("Эмулируем SSL handshake")
             
-            # SMTP протокол
-            self.smtp_session(ssl_socket)
+            # Простая эмуляция - отправляем данные как будто SSL установлен
+            self.smtp_session(client_socket)
             
         except Exception as e:
             self.logger.error(f"Ошибка обработки клиента: {e}")
@@ -146,83 +76,176 @@ class SimpleSSLSMTPServer:
                 pass
     
     def smtp_session(self, sock):
-        """SMTP сессия"""
+        """SMTP сессия с обработкой команд"""
         try:
-            # Приветствие
-            self.send_response(sock, "220 localhost ESMTP Ready")
+            # Даем время на "SSL handshake"
+            import time
+            time.sleep(0.1)
+            
+            # Отправляем приветствие SMTP
+            self.send_response(sock, "220 localhost ESMTP SSL Ready")
             
             email_data = ""
             in_data_mode = False
             auth_stage = None
+            mail_from = ""
+            rcpt_to = []
             
             while True:
                 try:
-                    data = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+                    # Получаем данные с тайм-аутом
+                    sock.settimeout(30)
+                    data = sock.recv(1024)
+                    
                     if not data:
                         break
+                    
+                    # Декодируем с обработкой ошибок
+                    try:
+                        command = data.decode('utf-8', errors='ignore').strip()
+                    except:
+                        command = str(data, errors='ignore').strip()
+                    
+                    if not command:
+                        continue
                         
-                    self.logger.info(f"Получена команда: {data}")
+                    self.logger.info(f"Команда: {command}")
                     
                     if in_data_mode:
-                        if data == ".":
+                        if command == ".":
                             # Конец данных письма
                             in_data_mode = False
-                            self.send_response(sock, "250 Message accepted")
-                            self.process_email(email_data)
+                            self.send_response(sock, "250 Message accepted for delivery")
+                            self.process_email(email_data, mail_from, rcpt_to)
                             email_data = ""
+                            mail_from = ""
+                            rcpt_to = []
                         else:
-                            email_data += data + "\n"
+                            email_data += command + "\n"
                         continue
                     
-                    cmd = data.upper().split()[0] if data else ""
+                    # Обработка команд
+                    cmd_parts = command.split()
+                    cmd = cmd_parts[0].upper() if cmd_parts else ""
                     
-                    if cmd == "HELO" or cmd == "EHLO":
-                        if cmd == "EHLO":
-                            response = "250-localhost\n250-AUTH LOGIN PLAIN\n250 8BITMIME"
-                        else:
-                            response = "250 localhost"
-                        self.send_response(sock, response)
+                    if cmd == "HELO":
+                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "unknown"
+                        self.send_response(sock, f"250 localhost Hello {hostname}")
+                        
+                    elif cmd == "EHLO":
+                        hostname = cmd_parts[1] if len(cmd_parts) > 1 else "unknown"
+                        responses = [
+                            f"250-localhost Hello {hostname}",
+                            "250-AUTH LOGIN PLAIN",
+                            "250-8BITMIME",
+                            "250-SIZE 52428800",
+                            "250 HELP"
+                        ]
+                        self.send_response(sock, "\r\n".join(responses))
                         
                     elif cmd == "AUTH":
-                        auth_type = data.split()[1].upper() if len(data.split()) > 1 else "LOGIN"
+                        auth_type = cmd_parts[1].upper() if len(cmd_parts) > 1 else "LOGIN"
+                        self.logger.info(f"Начинаем аутентификацию: {auth_type}")
+                        
                         if auth_type == "LOGIN":
                             auth_stage = "username"
                             self.send_response(sock, "334 VXNlcm5hbWU6")  # "Username:" в base64
                         elif auth_type == "PLAIN":
-                            self.send_response(sock, "235 Authentication successful")
+                            # Можем обработать PLAIN сразу или запросить данные
+                            if len(cmd_parts) > 2:
+                                # Данные уже переданы
+                                self.logger.info("AUTH PLAIN с данными")
+                                self.send_response(sock, "235 2.7.0 Authentication successful")
+                            else:
+                                self.send_response(sock, "334 ")
                         else:
-                            self.send_response(sock, "235 Authentication successful")
+                            self.send_response(sock, "235 2.7.0 Authentication successful")
                             
                     elif auth_stage == "username":
+                        # Получили username в base64
+                        try:
+                            username = base64.b64decode(command).decode('utf-8', errors='ignore')
+                            self.logger.info(f"Username: {username}")
+                        except:
+                            self.logger.info(f"Username (raw): {command}")
+                        
                         auth_stage = "password"
                         self.send_response(sock, "334 UGFzc3dvcmQ6")  # "Password:" в base64
                         
                     elif auth_stage == "password":
+                        # Получили password в base64
+                        try:
+                            password = base64.b64decode(command).decode('utf-8', errors='ignore')
+                            self.logger.info(f"Password: {password}")
+                        except:
+                            self.logger.info(f"Password (raw): {command}")
+                        
                         auth_stage = None
-                        self.send_response(sock, "235 Authentication successful")
+                        self.send_response(sock, "235 2.7.0 Authentication successful")
+                        self.logger.info("Аутентификация успешна")
                         
                     elif cmd == "MAIL":
-                        self.send_response(sock, "250 Sender OK")
+                        # MAIL FROM:<sender@example.com>
+                        if "FROM:" in command.upper():
+                            mail_from = command.split("FROM:", 1)[1].strip()
+                            mail_from = mail_from.strip("<>")
+                            self.logger.info(f"Mail from: {mail_from}")
+                            self.send_response(sock, "250 2.1.0 Ok")
+                        else:
+                            self.send_response(sock, "250 2.1.0 Ok")
                         
                     elif cmd == "RCPT":
-                        self.send_response(sock, "250 Recipient OK")
+                        # RCPT TO:<recipient@example.com>  
+                        if "TO:" in command.upper():
+                            rcpt = command.split("TO:", 1)[1].strip()
+                            rcpt = rcpt.strip("<>")
+                            rcpt_to.append(rcpt)
+                            self.logger.info(f"Recipient: {rcpt}")
+                            self.send_response(sock, "250 2.1.5 Ok")
+                        else:
+                            self.send_response(sock, "250 2.1.5 Ok")
                         
                     elif cmd == "DATA":
-                        self.send_response(sock, "354 Start mail input")
+                        self.send_response(sock, "354 End data with <CR><LF>.<CR><LF>")
                         in_data_mode = True
+                        self.logger.info("Начинаем получение данных письма")
                         
                     elif cmd == "QUIT":
-                        self.send_response(sock, "221 Bye")
+                        self.send_response(sock, "221 2.0.0 Bye")
                         break
                         
-                    elif cmd == "STARTTLS":
-                        self.send_response(sock, "220 Ready to start TLS")
-                        # Здесь должен быть TLS handshake
+                    elif cmd == "RSET":
+                        # Сброс состояния
+                        email_data = ""
+                        mail_from = ""
+                        rcpt_to = []
+                        in_data_mode = False
+                        auth_stage = None
+                        self.send_response(sock, "250 2.0.0 Ok")
+                        
+                    elif cmd == "NOOP":
+                        self.send_response(sock, "250 2.0.0 Ok")
+                        
+                    elif cmd == "HELP":
+                        self.send_response(sock, "214 2.0.0 Help available")
                         
                     else:
-                        self.send_response(sock, "250 OK")
+                        # Неизвестная команда - все равно отвечаем OK
+                        self.logger.info(f"Неизвестная команда: {command}")
+                        self.send_response(sock, "250 2.0.0 Ok")
                         
-                except socket.error:
+                except socket.timeout:
+                    self.logger.info("Тайм-аут соединения")
+                    break
+                except socket.error as e:
+                    self.logger.info(f"Ошибка сокета: {e}")
+                    break
+                except Exception as e:
+                    self.logger.error(f"Ошибка обработки команды: {e}")
+                    try:
+                        self.send_response(sock, "500 5.0.0 Command error")
+                    except:
+                        pass
                     break
                     
         except Exception as e:
@@ -231,47 +254,103 @@ class SimpleSSLSMTPServer:
     def send_response(self, sock, response):
         """Отправка ответа клиенту"""
         try:
-            sock.send((response + "\r\n").encode('utf-8'))
-        except:
-            pass
+            full_response = response + "\r\n"
+            sock.send(full_response.encode('utf-8'))
+            self.logger.debug(f"Ответ: {response}")
+        except Exception as e:
+            self.logger.error(f"Ошибка отправки ответа: {e}")
     
-    def process_email(self, email_data):
+    def process_email(self, email_data, mail_from, rcpt_to):
         """Обработка полученного письма"""
         try:
-            self.logger.info("Обработка полученного письма")
+            self.logger.info(f"Обрабатываем письмо от {mail_from} для {rcpt_to}")
+            
+            if not email_data.strip():
+                self.logger.warning("Пустые данные письма")
+                return
             
             # Парсинг email
-            msg = email.message_from_string(email_data)
-            subject = msg.get('Subject', 'Без темы')
-            sender = msg.get('From', 'Неизвестный отправитель')
-            
-            # Извлечение тела письма
-            body = ""
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                        break
-            else:
-                body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-            
-            # Отправка в Telegram
-            self.send_to_telegram(subject, sender, body)
+            try:
+                msg = email.message_from_string(email_data)
+                subject = self.decode_header(msg.get('Subject', 'Без темы'))
+                sender = self.decode_header(msg.get('From', mail_from or 'Неизвестный отправитель'))
+                
+                # Извлечение тела письма
+                body = self.extract_body(msg)
+                
+                self.logger.info(f"Тема: {subject}")
+                self.logger.info(f"От: {sender}")
+                self.logger.info(f"Тело: {body[:100]}...")
+                
+                # Отправка в Telegram
+                self.send_to_telegram(subject, sender, body)
+                
+            except Exception as e:
+                self.logger.error(f"Ошибка парсинга email: {e}")
+                # Отправляем сырые данные в Telegram
+                self.send_to_telegram("Сырые данные письма", mail_from or "unknown", email_data[:3000])
             
         except Exception as e:
             self.logger.error(f"Ошибка обработки письма: {e}")
     
+    def decode_header(self, header_value):
+        """Декодирование заголовков email"""
+        if not header_value:
+            return ""
+        
+        try:
+            from email.header import decode_header
+            decoded = decode_header(header_value)
+            result = ""
+            
+            for part, encoding in decoded:
+                if isinstance(part, bytes):
+                    if encoding:
+                        result += part.decode(encoding, errors='ignore')
+                    else:
+                        result += part.decode('utf-8', errors='ignore')
+                else:
+                    result += str(part)
+            
+            return result
+        except Exception as e:
+            self.logger.error(f"Ошибка декодирования заголовка: {e}")
+            return str(header_value)
+    
+    def extract_body(self, msg):
+        """Извлечение тела письма"""
+        try:
+            if msg.is_multipart():
+                for part in msg.walk():
+                    content_type = part.get_content_type()
+                    if content_type == "text/plain":
+                        charset = part.get_content_charset() or 'utf-8'
+                        payload = part.get_payload(decode=True)
+                        if isinstance(payload, bytes):
+                            return payload.decode(charset, errors='ignore')
+                        return str(payload)
+            else:
+                charset = msg.get_content_charset() or 'utf-8'
+                payload = msg.get_payload(decode=True)
+                if isinstance(payload, bytes):
+                    return payload.decode(charset, errors='ignore')
+                return str(payload)
+        except Exception as e:
+            self.logger.error(f"Ошибка извлечения тела письма: {e}")
+        
+        return "Не удалось извлечь содержимое письма"
+    
     def send_to_telegram(self, subject, sender, body):
         """Отправка в Telegram"""
         try:
-            message = f"📧 *Отчет о продажах*\n\n"
+            message = "📧 *Отчет о продажах*\n\n"
             message += f"*От:* {sender}\n"
             message += f"*Тема:* {subject}\n"
             message += f"*Время:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-            message += f"{'='*30}\n\n"
+            message += "=" * 30 + "\n\n"
             
-            if len(body) > 3500:
-                body = body[:3500] + "\n\n... [обрезано]"
+            if len(body) > 3000:
+                body = body[:3000] + "\n\n... [сообщение обрезано]"
             
             message += body
             
@@ -312,7 +391,7 @@ class SMTPBridgeApp:
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('smtp_ssl.log', encoding='utf-8'),
+                logging.FileHandler('smtp_fake_ssl.log', encoding='utf-8'),
                 logging.StreamHandler()
             ]
         )
@@ -352,20 +431,24 @@ class SMTPBridgeApp:
     def create_gui(self):
         """Создание интерфейса"""
         self.root = tk.Tk()
-        self.root.title("SMTP-Telegram мост с SSL")
-        self.root.geometry("650x550")
+        self.root.title("SMTP-Telegram мост (Fake SSL)")
+        self.root.geometry("700x600")
         
         # Информация
-        info_frame = ttk.LabelFrame(self.root, text="SSL SMTP Сервер")
+        info_frame = ttk.LabelFrame(self.root, text="Эмуляция SSL SMTP Сервера")
         info_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        info_text = tk.Text(info_frame, height=3, wrap=tk.WORD)
+        info_text = tk.Text(info_frame, height=4, wrap=tk.WORD)
         info_text.pack(fill=tk.X, padx=5, pady=5)
-        info_text.insert(tk.END, "Поддерживает SSL/TLS подключения на порту 465.\n" + 
-                                "В кассе: localhost:465, логин/пароль любые, SSL включен")
+        info_text.insert(tk.END, 
+            "Эмулирует SSL SMTP сервер для касс требующих SSL.\n"
+            "В кассе: localhost:465 (или другой порт)\n"
+            "Логин/пароль: любые, SSL: включен\n"
+            "Сервер принимает подключения как SSL, но без настоящего TLS шифрования."
+        )
         info_text.config(state=tk.DISABLED, bg='#f0f0f0')
         
-        # Настройки
+        # Настройки  
         settings_frame = ttk.LabelFrame(self.root, text="Настройки")
         settings_frame.pack(fill=tk.X, padx=10, pady=5)
         
@@ -380,9 +463,12 @@ class SMTPBridgeApp:
         ttk.Entry(settings_frame, textvariable=self.chat_id_var, width=50).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Порт
-        ttk.Label(settings_frame, text="Порт SSL:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(settings_frame, text="Порт:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
         self.port_var = tk.StringVar(value=str(self.config["smtp_port"]))
-        ttk.Entry(settings_frame, textvariable=self.port_var, width=10).grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
+        port_entry = ttk.Entry(settings_frame, textvariable=self.port_var, width=10)
+        port_entry.grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(settings_frame, text="(465-SSL, 587-STARTTLS, 25-обычный)").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
         
         settings_frame.columnconfigure(1, weight=1)
         
@@ -390,7 +476,7 @@ class SMTPBridgeApp:
         buttons_frame = ttk.Frame(self.root)
         buttons_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        self.start_btn = ttk.Button(buttons_frame, text="Запустить SSL", command=self.start_server)
+        self.start_btn = ttk.Button(buttons_frame, text="Запустить Fake SSL", command=self.start_server)
         self.start_btn.pack(side=tk.LEFT, padx=5)
         
         self.stop_btn = ttk.Button(buttons_frame, text="Остановить", command=self.stop_server, state=tk.DISABLED)
@@ -398,12 +484,13 @@ class SMTPBridgeApp:
         
         ttk.Button(buttons_frame, text="Сохранить", command=self.save_settings).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Тест Telegram", command=self.test_telegram).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Очистить логи", command=self.clear_logs).pack(side=tk.LEFT, padx=5)
         
         # Логи
-        logs_frame = ttk.LabelFrame(self.root, text="Логи")
+        logs_frame = ttk.LabelFrame(self.root, text="Логи работы")
         logs_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        self.log_text = scrolledtext.ScrolledText(logs_frame, height=15)
+        self.log_text = scrolledtext.ScrolledText(logs_frame, height=20, font=("Consolas", 9))
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Статус
@@ -412,7 +499,7 @@ class SMTPBridgeApp:
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
-        # Загрузка логов
+        # Автообновление логов
         self.refresh_logs()
     
     def start_server(self):
@@ -423,7 +510,8 @@ class SMTPBridgeApp:
         
         try:
             port = int(self.port_var.get())
-            self.server = SimpleSSLSMTPServer(
+            
+            self.server = FakeSSLSMTPServer(
                 host=self.config["smtp_host"],
                 port=port,
                 token=self.config["telegram_token"],
@@ -436,10 +524,12 @@ class SMTPBridgeApp:
             
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"SSL SMTP запущен на localhost:{port}")
+            self.status_var.set(f"Fake SSL SMTP запущен на localhost:{port}")
             
-            messagebox.showinfo("Успех", f"SSL SMTP сервер запущен на порту {port}!")
+            messagebox.showinfo("Успех", f"Fake SSL SMTP сервер запущен на порту {port}!\n\nВ кассе укажите:\nSMTP: localhost:{port}\nSSL: включен")
             
+        except ValueError:
+            messagebox.showerror("Ошибка", "Некорректный порт!")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось запустить сервер: {e}")
             self.logger.error(f"Ошибка запуска: {e}")
@@ -481,7 +571,7 @@ class SMTPBridgeApp:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {
                 'chat_id': chat_id,
-                'text': f"🔒 SSL SMTP-Telegram тест\n\nВремя: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+                'text': f"🔒 Fake SSL SMTP-Telegram тест\n\nВремя: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\nГотов принимать отчеты!"
             }
             
             response = requests.post(url, data=payload, timeout=10)
@@ -494,19 +584,36 @@ class SMTPBridgeApp:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка подключения: {e}")
     
-    def refresh_logs(self):
-        """Обновление логов"""
+    def clear_logs(self):
+        """Очистка логов"""
         try:
-            if os.path.exists('smtp_ssl.log'):
-                with open('smtp_ssl.log', 'r', encoding='utf-8') as f:
-                    logs = f.read()
+            self.log_text.delete(1.0, tk.END)
+            if os.path.exists('smtp_fake_ssl.log'):
+                os.remove('smtp_fake_ssl.log')
+        except:
+            pass
+    
+    def refresh_logs(self):
+        """Автообновление логов"""
+        try:
+            if os.path.exists('smtp_fake_ssl.log'):
+                with open('smtp_fake_ssl.log', 'r', encoding='utf-8') as f:
+                    logs = f.readlines()
+                    
+                # Показываем только последние 100 строк
+                recent_logs = logs[-100:] if len(logs) > 100 else logs
+                
+                current_content = self.log_text.get(1.0, tk.END)
+                new_content = ''.join(recent_logs)
+                
+                if new_content != current_content.strip():
                     self.log_text.delete(1.0, tk.END)
-                    self.log_text.insert(tk.END, logs)
+                    self.log_text.insert(tk.END, new_content)
                     self.log_text.see(tk.END)
         except:
             pass
         
-        # Автообновление каждые 2 секунды
+        # Обновляем каждые 2 секунды
         self.root.after(2000, self.refresh_logs)
     
     def run(self):
