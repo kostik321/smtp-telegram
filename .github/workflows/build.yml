@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     
     steps:
     - name: Checkout code
@@ -18,7 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.11'
         
     - name: Install dependencies
       run: |
@@ -31,7 +31,7 @@ jobs:
         pyinstaller --onefile --windowed --name "SMTP-Telegram-Bridge" --hidden-import "PIL._tkinter_finder" --hidden-import "pystray._win32" smtp_telegram_bridge.py
         
     - name: Upload EXE artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: SMTP-Telegram-Bridge-Windows
         path: dist/SMTP-Telegram-Bridge.exe
