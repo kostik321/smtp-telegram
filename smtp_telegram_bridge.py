@@ -523,9 +523,14 @@ class FakeSSLSMTPServer:
             self.logger.info(f"Початковий текст містить: {len(body)} символів")
             self.logger.info(f"Перевірка на SAMPO: {'SAMPO Reports' in body}")
             
+            # Логування перших 500 символів для аналізу структури
+            self.logger.info(f"Початок тексту: {body[:500]}")
+            
             clean_body = self.clean_html(body)
             
             self.logger.info(f"Після форматування: {len(clean_body)} символів")
+            # Логування результату форматування
+            self.logger.info(f"Форматований текст (перші 800 символів): {clean_body[:800]}")
             
             header = "📊 **ЗВІТ SAMPO**\n\n"
             header += f"👤 **Від:** {sender}\n"
@@ -753,7 +758,7 @@ class SMTPBridgeApp:
         ttk.Button(tray_buttons_frame, text="Прибрати з автозавантаження", command=self.remove_from_startup).pack(side=tk.LEFT, padx=5)
         
         # Логи
-        logs_frame = ttk.LabelFrame(self.root, text="Логи роботи")
+        logs_frame = ttk.LabelFrame(self.root, text=f"Логи роботи - {self.log_file_path}")
         logs_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         self.log_text = scrolledtext.ScrolledText(logs_frame, height=20, font=("Consolas", 9))
@@ -940,6 +945,45 @@ class SMTPBridgeApp:
             messagebox.showerror("Помилка", "Бібліотека pystray не знайдена!\nСистемний трей недоступний.")
         except Exception as e:
             messagebox.showerror("Помилка", f"Помилка згортання в трей: {e}")
+    
+    def silent_minimize_to_tray(self):
+        """Тихе згортання в системний трей без повідомлень"""
+        try:
+            import pystray
+            from PIL import Image, ImageDraw
+            
+            if self.tray_icon:
+                return
+                
+            image = Image.new('RGB', (64, 64), color=(0, 100, 200))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+            draw.text((24, 28), "S", fill=(0, 0, 0), anchor="mm")
+            
+            menu = pystray.Menu(
+                pystray.MenuItem("Показати вікно", self.show_from_tray),
+                pystray.MenuItem("Зупинити сервер", self.stop_server_tray),
+                pystray.MenuItem("Перезапустити сервер", self.restart_server_tray),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Вихід", self.quit_from_tray)
+            )
+            
+            self.tray_icon = pystray.Icon(
+                "smtp_bridge", 
+                image, 
+                "SMTP-Telegram міст SAMPO", 
+                menu
+            )
+            
+            self.root.withdraw()
+            
+            threading.Thread(target=self.tray_icon.run, daemon=True).start()
+            
+            self.logger.info("Програма автоматично згорнута в системний трей")
+            
+        except:
+            # Якщо не вдається згорнути в трей - просто продовжуємо без помилок
+            pass
     
     def show_from_tray(self, icon=None, item=None):
         """Показати вікно з трею"""
