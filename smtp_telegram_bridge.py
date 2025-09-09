@@ -12,11 +12,7 @@ from email.header import decode_header
 import logging
 import json
 import os
-import sys
 from datetime import datetime
-import pystray
-from PIL import Image, ImageDraw
-import io
 
 CONFIG_FILE = "smtp_config.json"
 
@@ -52,7 +48,6 @@ class SMTPTelegramBridge:
             try:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    # Добавляем недостающие ключи
                     for key, value in default_config.items():
                         if key not in config:
                             config[key] = value
@@ -132,20 +127,15 @@ class TelegramSMTPServer(smtpd.SMTPServer):
         self.logger.info(f"📧 Получено письмо от {mailfrom}")
         
         try:
-            # Парсинг email
             if isinstance(data, bytes):
                 msg = email.message_from_bytes(data)
             else:
                 msg = email.message_from_string(data)
             
-            # Извлечение заголовков
             subject = self.decode_mime_words(msg.get('Subject', 'Без темы'))
             sender = self.decode_mime_words(msg.get('From', mailfrom))
-            
-            # Извлечение тела письма
             body = self.extract_body(msg)
             
-            # Отправка в Telegram
             self.send_to_telegram(subject, sender, body)
             
         except Exception as e:
@@ -163,7 +153,7 @@ class TelegramSMTPServer(smtpd.SMTPServer):
             for fragment, charset in decoded_fragments:
                 if isinstance(fragment, bytes):
                     if charset:
-                        decoded_string += fragment.decode(charset)
+                        decoded_string += fragment.decode(charset, errors='ignore')
                     else:
                         decoded_string += fragment.decode('utf-8', errors='ignore')
                 else:
@@ -207,20 +197,17 @@ class TelegramSMTPServer(smtpd.SMTPServer):
     def send_to_telegram(self, subject, sender, body):
         """Отправка сообщения в Telegram"""
         try:
-            # Формирование сообщения
             message = f"📧 *Отчет о продажах*\n\n"
             message += f"*От:* {sender}\n"
             message += f"*Тема:* {subject}\n"
             message += f"*Время:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
             message += f"{'='*30}\n\n"
             
-            # Ограничение длины
             if len(body) > 3500:
                 body = body[:3500] + "\n\n... [сообщение обрезано]"
             
             message += body
             
-            # Отправка
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
             
             payload = {
@@ -242,10 +229,8 @@ class TelegramSMTPServer(smtpd.SMTPServer):
 class SMTPBridgeGUI:
     def __init__(self):
         self.bridge = SMTPTelegramBridge()
-        self.tray_icon = None
         self.create_gui()
         
-        # Автозапуск если настроен
         if self.bridge.config.get("auto_start", False):
             self.start_server()
 
@@ -254,22 +239,13 @@ class SMTPBridgeGUI:
         self.root = tk.Tk()
         self.root.title("SMTP-Telegram мост")
         self.root.geometry("600x500")
-        self.root.resizable(True, True)
         
-        # Обработка закрытия окна
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        # Создание вкладок
         notebook = ttk.Notebook(self.root)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка настроек
         self.create_settings_tab(notebook)
-        
-        # Вкладка логов
         self.create_logs_tab(notebook)
         
-        # Строка состояния
         self.status_var = tk.StringVar()
         self.status_var.set("Остановлено")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
@@ -280,7 +256,6 @@ class SMTPBridgeGUI:
         settings_frame = ttk.Frame(notebook)
         notebook.add(settings_frame, text="Настройки")
         
-        # Telegram настройки
         telegram_frame = ttk.LabelFrame(settings_frame, text="Настройки Telegram")
         telegram_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -296,7 +271,6 @@ class SMTPBridgeGUI:
         
         telegram_frame.columnconfigure(1, weight=1)
         
-        # SMTP настройки
         smtp_frame = ttk.LabelFrame(settings_frame, text="SMTP Сервер")
         smtp_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -308,14 +282,12 @@ class SMTPBridgeGUI:
         self.port_var = tk.StringVar(value=str(self.bridge.config["smtp_port"]))
         ttk.Entry(smtp_frame, textvariable=self.port_var, width=10).grid(row=0, column=3, padx=5, pady=2, sticky=tk.W)
         
-        # Дополнительные настройки
         extra_frame = ttk.LabelFrame(settings_frame, text="Дополнительно")
         extra_frame.pack(fill=tk.X, padx=5, pady=5)
         
         self.auto_start_var = tk.BooleanVar(value=self.bridge.config.get("auto_start", False))
         ttk.Checkbutton(extra_frame, text="Автозапуск сервера", variable=self.auto_start_var).pack(anchor=tk.W, padx=5, pady=2)
         
-        # Кнопки управления
         buttons_frame = ttk.Frame(settings_frame)
         buttons_frame.pack(fill=tk.X, padx=5, pady=10)
         
@@ -325,29 +297,23 @@ class SMTPBridgeGUI:
         self.stop_btn = ttk.Button(buttons_frame, text="Остановить", command=self.stop_server, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(buttons_frame, text="Сохранить настройки", command=self.save_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Сохранить", command=self.save_settings).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Тест Telegram", command=self.test_telegram).pack(side=tk.LEFT, padx=5)
-        
-        # Кнопка сворачивания в трей
-        ttk.Button(buttons_frame, text="Свернуть в трей", command=self.minimize_to_tray).pack(side=tk.RIGHT, padx=5)
 
     def create_logs_tab(self, notebook):
         """Вкладка логов"""
         logs_frame = ttk.Frame(notebook)
         notebook.add(logs_frame, text="Логи")
         
-        # Текстовое поле для логов
         self.log_text = scrolledtext.ScrolledText(logs_frame, height=20)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Кнопки
         log_buttons_frame = ttk.Frame(logs_frame)
         log_buttons_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Button(log_buttons_frame, text="Очистить", command=self.clear_logs).pack(side=tk.LEFT, padx=5)
         ttk.Button(log_buttons_frame, text="Обновить", command=self.refresh_logs).pack(side=tk.LEFT, padx=5)
         
-        # Загрузка логов
         self.refresh_logs()
 
     def start_server(self):
@@ -425,48 +391,6 @@ class SMTPBridgeGUI:
                     self.log_text.see(tk.END)
         except Exception as e:
             self.log_text.insert(tk.END, f"Ошибка чтения логов: {e}\n")
-
-    def create_tray_image(self):
-        """Создание иконки для трея"""
-        # Создаем простую иконку
-        image = Image.new('RGB', (64, 64), color=(0, 100, 200))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
-        draw.text((20, 25), "M", fill=(0, 0, 0))
-        return image
-
-    def minimize_to_tray(self):
-        """Сворачивание в системный трей"""
-        self.root.withdraw()
-        
-        if not self.tray_icon:
-            menu = pystray.Menu(
-                pystray.MenuItem("Показать", self.show_window),
-                pystray.MenuItem("Выход", self.quit_app)
-            )
-            
-            image = self.create_tray_image()
-            self.tray_icon = pystray.Icon("smtp_bridge", image, "SMTP-Telegram мост", menu)
-            
-            # Запуск трея в отдельном потоке
-            threading.Thread(target=self.tray_icon.run, daemon=True).start()
-
-    def show_window(self, icon=None, item=None):
-        """Показать окно"""
-        self.root.deiconify()
-        self.root.lift()
-
-    def quit_app(self, icon=None, item=None):
-        """Закрытие приложения"""
-        if self.tray_icon:
-            self.tray_icon.stop()
-        self.bridge.stop_server()
-        self.root.quit()
-
-    def on_closing(self):
-        """Обработка закрытия окна"""
-        if messagebox.askokcancel("Выход", "Закрыть приложение?\n\nМожно свернуть в трей для работы в фоне."):
-            self.quit_app()
 
     def run(self):
         """Запуск приложения"""
