@@ -14,7 +14,9 @@ from tkinter import ttk, messagebox
 import base64
 import re
 
-CONFIG_FILE = "smtp_config.json"
+# Получаем абсолютный путь к файлу конфигурации в папке с программой
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(SCRIPT_DIR, "smtp_config.json")
 
 class FakeSSLSMTPServer:
     def __init__(self, host='localhost', port=25, token='', chat_id='', logger=None, debug_files=True):
@@ -642,7 +644,7 @@ class SMTPBridgeApp:
         # Принудительно обновляем поля через секунду после загрузки
         self.root.after(1000, self.refresh_interface)
         
-        # Автозапуск сервера через 2 секунди після запуску
+        # Автозапуск сервера через 2 секунды після запуску
         if self.config.get("auto_start", True):
             self.root.after(2000, self.auto_start_server)
     
@@ -656,6 +658,10 @@ class SMTPBridgeApp:
             "auto_start": True,
             "debug_files": False  # Новий параметр - за замовчуванням вимкнено
         }
+        
+        print(f"Ищем файл конфигурации: {CONFIG_FILE}")
+        print(f"Рабочий каталог: {os.getcwd()}")
+        print(f"Каталог программы: {SCRIPT_DIR}")
         
         if os.path.exists(CONFIG_FILE):
             try:
