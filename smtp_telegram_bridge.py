@@ -367,8 +367,8 @@ class FakeSSLSMTPServer:
     
     def format_sampo_report(self, text):
         """Спеціальне форматування для звітів SAMPO"""
-        # Перевіряємо чи це SAMPO звіт (тепер без зірочок)
-        if 'SAMPO Reports' not in text:
+        # Перевіряємо чи це SAMPO або Unipro звіт
+        if 'SAMPO Reports' not in text and 'Unipro Reports' not in text:
             return text
             
         lines = text.split('\n')
@@ -381,7 +381,7 @@ class FakeSSLSMTPServer:
                 continue
             
             # Основна назва
-            if 'SAMPO Reports' in line:
+            if 'SAMPO Reports' in line or 'Unipro Reports' in line:
                 formatted_lines.append("🏪 **SAMPO REPORTS**")
                 continue
             elif line == 'Отправка по команде пользователя.':
