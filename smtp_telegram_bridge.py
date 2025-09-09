@@ -12,8 +12,17 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import base64
 import re
+import sys
 
-CONFIG_FILE = "smtp_config.json"
+# Получаем путь к директории где лежит исполняемый файл
+if hasattr(sys, 'frozen'):
+    # Если это exe файл
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    # Если это py файл
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE = os.path.join(APP_DIR, "smtp_config.json")
 
 class FakeSSLSMTPServer:
     def __init__(self, host='localhost', port=25, token='', chat_id=''):
@@ -585,6 +594,9 @@ class SMTPBridgeApp:
         
         self.create_gui()
         
+        # Обновляем поля интерфейса значениями из конфига
+        self.update_gui_from_config()
+        
         # Автозапуск сервера через 2 секунды после запуска
         if self.config.get("auto_start", True):
             self.root.after(2000, self.auto_start_server)
@@ -648,17 +660,17 @@ class SMTPBridgeApp:
         
         # Token
         ttk.Label(settings_frame, text="Telegram Bot Token:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
-        self.token_var = tk.StringVar(value=self.config["telegram_token"])
+        self.token_var = tk.StringVar()
         ttk.Entry(settings_frame, textvariable=self.token_var, width=50, show="*").grid(row=0, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Chat ID
         ttk.Label(settings_frame, text="Telegram Chat ID:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
-        self.chat_id_var = tk.StringVar(value=self.config["telegram_chat_id"])
+        self.chat_id_var = tk.StringVar()
         ttk.Entry(settings_frame, textvariable=self.chat_id_var, width=50).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Порт
         ttk.Label(settings_frame, text="SMTP Порт:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
-        self.port_var = tk.StringVar(value=str(self.config["smtp_port"]))
+        self.port_var = tk.StringVar()
         port_entry = ttk.Entry(settings_frame, textvariable=self.port_var, width=10)
         port_entry.grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
         
@@ -668,7 +680,7 @@ class SMTPBridgeApp:
         auto_frame = ttk.Frame(settings_frame)
         auto_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
-        self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", True))
+        self.auto_start_var = tk.BooleanVar()
         ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
