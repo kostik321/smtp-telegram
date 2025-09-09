@@ -701,6 +701,13 @@ class SMTPBridgeApp:
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
     
+    def update_gui_from_config(self):
+        """Обновление полей интерфейса из конфигурации"""
+        self.token_var.set(self.config["telegram_token"])
+        self.chat_id_var.set(self.config["telegram_chat_id"])
+        self.port_var.set(str(self.config["smtp_port"]))
+        self.auto_start_var.set(self.config.get("auto_start", True))
+    
     def start_server(self):
         """Запуск сервера"""
         if not self.config["telegram_token"] or not self.config["telegram_chat_id"]:
