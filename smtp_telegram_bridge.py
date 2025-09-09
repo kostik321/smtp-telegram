@@ -641,10 +641,7 @@ class SMTPBridgeApp:
         
         self.create_gui()
         
-        # Принудительно обновляем поля через секунду после загрузки
-        self.root.after(1000, self.refresh_interface)
-        
-        # Автозапуск сервера через 2 секунды після запуску
+        # Автозапуск сервера через 2 секунди після запуску
         if self.config.get("auto_start", True):
             self.root.after(2000, self.auto_start_server)
     
@@ -659,10 +656,6 @@ class SMTPBridgeApp:
             "debug_files": False  # Новий параметр - за замовчуванням вимкнено
         }
         
-        print(f"Ищем файл конфигурации: {CONFIG_FILE}")
-        print(f"Рабочий каталог: {os.getcwd()}")
-        print(f"Каталог программы: {SCRIPT_DIR}")
-        
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -670,17 +663,9 @@ class SMTPBridgeApp:
                     for key, value in default.items():
                         if key not in config:
                             config[key] = value
-                    
-                    # Диагностика загрузки
-                    print(f"Конфигурация загружена из {CONFIG_FILE}")
-                    print(f"Token: {'*'*len(config.get('telegram_token', ''))} chars")
-                    print(f"Chat ID: {config.get('telegram_chat_id', 'empty')}")
-                    
                     return config
-            except Exception as e:
-                print(f"Ошибка загрузки конфига: {e}")
-        
-        print("Используется конфигурация по умолчанию")
+            except:
+                pass
         return default
     
     def save_config(self):
@@ -721,19 +706,16 @@ class SMTPBridgeApp:
         # Token
         ttk.Label(settings_frame, text="Telegram Bot Token:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         self.token_var = tk.StringVar(value=self.config["telegram_token"])
-        self.token_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))
         ttk.Entry(settings_frame, textvariable=self.token_var, width=50, show="*").grid(row=0, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Chat ID
         ttk.Label(settings_frame, text="Telegram Chat ID:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.chat_id_var = tk.StringVar(value=self.config["telegram_chat_id"])
-        self.chat_id_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))
         ttk.Entry(settings_frame, textvariable=self.chat_id_var, width=50).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         
         # Порт
         ttk.Label(settings_frame, text="SMTP Порт:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
         self.port_var = tk.StringVar(value=str(self.config["smtp_port"]))
-        self.port_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))
         port_entry = ttk.Entry(settings_frame, textvariable=self.port_var, width=10)
         port_entry.grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
         
@@ -744,7 +726,6 @@ class SMTPBridgeApp:
         auto_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
         self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", True))
-        self.auto_start_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))
         ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
@@ -753,7 +734,6 @@ class SMTPBridgeApp:
         debug_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
         self.debug_files_var = tk.BooleanVar(value=self.config.get("debug_files", False))
-        self.debug_files_var.trace('w', lambda *args: self.root.after_idle(self.auto_save_settings))
         ttk.Checkbutton(debug_frame, text="Створювати відладочні файли (sampo_debug.txt, sampo_raw_debug.txt)", 
                        variable=self.debug_files_var).pack(anchor=tk.W)
         
@@ -838,7 +818,7 @@ class SMTPBridgeApp:
             self.config["telegram_chat_id"] = self.chat_id_var.get().strip()
             self.config["smtp_port"] = int(self.port_var.get())
             self.config["auto_start"] = self.auto_start_var.get()
-            self.config["debug_files"] = self.debug_files_var.get()
+            self.config["debug_files"] = self.debug_files_var.get()  # Зберігаємо налаштування відладки
             
             self.save_config()
             messagebox.showinfo("Успіх", "Налаштування збережено!")
@@ -847,38 +827,6 @@ class SMTPBridgeApp:
             messagebox.showerror("Помилка", "Некоректний порт!")
         except Exception as e:
             messagebox.showerror("Помилка", f"Помилка збереження: {e}")
-    
-    def auto_save_settings(self):
-        """Автоматичне збереження налаштувань без повідомлення"""
-        try:
-            self.config["telegram_token"] = self.token_var.get().strip()
-            self.config["telegram_chat_id"] = self.chat_id_var.get().strip()
-            self.config["smtp_port"] = int(self.port_var.get())
-            self.config["auto_start"] = self.auto_start_var.get()
-            self.config["debug_files"] = self.debug_files_var.get()
-            
-            self.save_config()
-            
-        except:
-            pass  # Тихо ігноруємо помилки автозбереження
-    
-    def refresh_interface(self):
-        """Принудительное обновление полей интерфейса из конфигурации"""
-        try:
-            # Перезагружаем конфигурацию на всякий случай
-            self.config = self.load_config()
-            
-            # Принудительно обновляем все поля
-            self.token_var.set(self.config.get("telegram_token", ""))
-            self.chat_id_var.set(self.config.get("telegram_chat_id", ""))
-            self.port_var.set(str(self.config.get("smtp_port", 25)))
-            self.auto_start_var.set(self.config.get("auto_start", True))
-            self.debug_files_var.set(self.config.get("debug_files", False))
-            
-            print(f"Interface refreshed: Token={'*'*len(self.config.get('telegram_token', ''))} chars, Chat ID={self.config.get('telegram_chat_id', '')}")
-            
-        except Exception as e:
-            print(f"Ошибка обновления интерфейса: {e}")
     
     def test_telegram(self):
         """Тест Telegram"""
@@ -1051,9 +999,6 @@ class SMTPBridgeApp:
     
     def on_closing(self):
         """Обробка закриття вікна"""
-        # Автоматично зберігаємо налаштування перед закриттям
-        self.auto_save_settings()
-        
         result = messagebox.askyesnocancel(
             "Вихід", 
             "Що ви хочете зробити?\n\n"
