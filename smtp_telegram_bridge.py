@@ -394,14 +394,13 @@ class FakeSSLSMTPServer:
     
     def format_sampo_report(self, text):
         """Спеціальне форматування для звітів SAMPO"""
-        # Перевіряємо чи це SAMPO звіт
+        # Перевіряємо чи це SAMPO звіт (тепер без зірочок)
         if 'SAMPO Reports' not in text:
             return text
             
         lines = text.split('\n')
         formatted_lines = []
         in_table = False
-        table_header_found = False
         
         for line in lines:
             line = line.strip()
@@ -409,7 +408,7 @@ class FakeSSLSMTPServer:
                 continue
             
             # Основна назва
-            if line == 'SAMPO Reports':
+            if 'SAMPO Reports' in line:
                 formatted_lines.append("🏪 **SAMPO REPORTS**")
                 continue
             elif line == 'Отправка по команде пользователя.':
@@ -435,10 +434,10 @@ class FakeSSLSMTPServer:
                 continue
             elif line.startswith('Период:'):
                 period = line.replace('Период:', '').strip()
-                formatted_lines.append(f"🗓 **Période:** {period}")
+                formatted_lines.append(f"🗓 **Період:** {period}")
                 continue
                 
-            # Продажі секція
+            # Продажі та повернення секції (з caption)
             if line == 'ПРОДАЖИ':
                 formatted_lines.append(f"\n💰 **ПРОДАЖІ**")
                 continue
@@ -446,14 +445,42 @@ class FakeSSLSMTPServer:
                 formatted_lines.append(f"\n📉 **ПОВЕРНЕННЯ**")
                 continue
                 
-            # Обробка рядків з даними (формат " Ключ | Значення |")
+            # Обробка рядків з даними (формат "Ключ | Значення |")
             if '|' in line and line.count('|') >= 2:
                 parts = [p.strip() for p in line.split('|')]
                 if len(parts) >= 3 and parts[0] and parts[1]:
                     key = parts[0]
                     value = parts[1]
                     
-                    # Визначення типу даних для емодзі
+                    # Перевіряємо чи це не заголовок таблиці товарів
+                    if key == '№' and 'Имя' in value:
+                        formatted_lines.append(f"\n🛒 **ЗВІТ ПО ТОВАРАХ**")
+                        formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                        formatted_lines.append("📋 **СПИСОК ТОВАРІВ:**")
+                        formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                        in_table = True
+                        continue
+                    
+                    # Рядки товарів в таблиці
+                    if in_table and key.isdigit():
+                        num = key
+                        name = parts[1] if len(parts) > 1 else "—"
+                        qty = parts[2] if len(parts) > 2 else "—"
+                        cost = parts[3] if len(parts) > 3 else "—"
+                        profit = parts[4] if len(parts) > 4 else "—"
+                        
+                        # Скорочуємо назву якщо дуже довга
+                        if len(name) > 35:
+                            name = name[:32] + "..."
+                            
+                        formatted_lines.append(f"\n`{num:>2}.` **{name}**")
+                        formatted_lines.append(f"   📦 Кількість: `{qty}`")
+                        formatted_lines.append(f"   💵 Вартість: `{cost}`")
+                        formatted_lines.append(f"   📈 Прибуток: `{profit}`")
+                        formatted_lines.append("   ────────────────────────────")
+                        continue
+                    
+                    # Звичайні дані (Сумма, Скидка, тощо)
                     if any(word in key.lower() for word in ['сумма', 'сума']):
                         formatted_lines.append(f"💵 **{key}:** `{value}`")
                     elif any(word in key.lower() for word in ['скидка', 'знижка']):
@@ -470,64 +497,13 @@ class FakeSSLSMTPServer:
                         formatted_lines.append(f"📊 **{key}:** `{value}`")
                     continue
                     
-            # Звіт по товарах
+            # Звіт по товарах заголовок
             if line == 'Отчет по товарам':
-                formatted_lines.append(f"\n🛒 **ЗВІТ ПО ТОВАРАХ**")
+                # Не додаємо тут, тому що він буде доданий коли побачимо заголовок таблиці
                 continue
                 
-            # Заголовок таблиці товарів - шукаємо рядок з № | Имя | К-во | Стоимость | Прибыль
-            if '№' in line and 'Имя' in line and ('К-во' in line or 'Стоимость' in line or 'Прибыль' in line):
-                formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                formatted_lines.append("📋 **СПИСОК ТОВАРІВ:**")
-                formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                in_table = True
-                table_header_found = True
-                continue
-                
-            # Рядки товарів у таблиці - шукаємо формат "число | назва | кількість | вартість | прибуток"
-            if in_table and '|' in line:
-                parts = [p.strip() for p in line.split('|') if p.strip()]
-                
-                # Перевіряємо чи перший елемент - це номер товару
-                if len(parts) >= 4:
-                    try:
-                        # Перевіряємо чи перший елемент може бути числом
-                        first_part = parts[0].strip()
-                        if first_part.isdigit() or (first_part and first_part[0].isdigit()):
-                            num = first_part
-                            name = parts[1]
-                            qty = parts[2] if len(parts) > 2 else "—"
-                            cost = parts[3] if len(parts) > 3 else "—"
-                            profit = parts[4] if len(parts) > 4 else "—"
-                            
-                            # Скорочуємо назву якщо дуже довга
-                            if len(name) > 35:
-                                name = name[:32] + "..."
-                                
-                            formatted_lines.append(f"\n`{num:>2}.` **{name}**")
-                            formatted_lines.append(f"   📦 Кількість: `{qty}`")
-                            formatted_lines.append(f"   💵 Вартість: `{cost}`")
-                            formatted_lines.append(f"   📈 Прибуток: `{profit}`")
-                            formatted_lines.append("   ────────────────────────────")
-                            continue
-                    except (IndexError, ValueError):
-                        pass
-                        
-            # ВСЕГО рядок
-            if line.strip().startswith('|') and 'ВСЕГО' in line:
-                parts = [p.strip() for p in line.split('|') if p.strip()]
-                if len(parts) >= 3:
-                    formatted_lines.append("\n" + "═" * 40)
-                    formatted_lines.append(f"💰 **ВСЬОГО:** Сума: `{parts[1]}` | Прибуток: `{parts[2]}`")
-                    formatted_lines.append("═" * 40)
-                continue
-                
-            # Інші рядки - якщо ми в таблиці товарів, але рядок не підходить під формат таблиці
-            if in_table and not table_header_found:
-                # Можливо це інший формат рядка товарів, додаємо як є
-                formatted_lines.append(line)
-            elif not in_table:
-                # Звичайні рядки поза таблицею
+            # Інші рядки без змін
+            if line not in ['', ' ']:
                 formatted_lines.append(line)
         
         return '\n'.join(formatted_lines)
