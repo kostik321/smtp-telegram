@@ -549,6 +549,7 @@ class SMTPBridgeApp:
             self.config["telegram_token"] = self.token_var.get().strip()
             self.config["telegram_chat_id"] = self.chat_id_var.get().strip()
             self.config["smtp_port"] = int(self.port_var.get())
+            self.config["auto_start"] = self.auto_start_var.get()
             
             self.save_config()
             messagebox.showinfo("Успех", "Настройки сохранены!")
