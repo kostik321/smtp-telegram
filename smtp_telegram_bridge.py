@@ -8,24 +8,19 @@ import requests
 from datetime import datetime
 import json
 import os
-import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 import base64
 import re
 
-# Получаем абсолютный путь к файлу конфигурации в папке с программой
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, "smtp_config.json")
+CONFIG_FILE = "smtp_config.json"
 
 class FakeSSLSMTPServer:
-    def __init__(self, host='localhost', port=25, token='', chat_id='', logger=None, debug_files=True):
+    def __init__(self, host='localhost', port=25, token='', chat_id=''):
         self.host = host
         self.port = port
         self.token = token
         self.chat_id = chat_id
-        self.logger = logger or logging.getLogger(__name__)
-        self.debug_files = debug_files  # Новий параметр для контролю створення відладочних файлів
         self.running = False
         self.server_socket = None
         
@@ -38,12 +33,10 @@ class FakeSSLSMTPServer:
             self.server_socket.listen(5)
             
             self.running = True
-            self.logger.info(f"SMTP сервер запущено на {self.host}:{self.port}")
             
             while self.running:
                 try:
                     client_socket, address = self.server_socket.accept()
-                    self.logger.info(f"Підключення від {address}")
                     
                     client_thread = threading.Thread(
                         target=self.handle_client, 
@@ -54,18 +47,18 @@ class FakeSSLSMTPServer:
                     
                 except socket.error:
                     if self.running:
-                        self.logger.error("Помилка сокета")
+                        pass
                     break
                     
         except Exception as e:
-            self.logger.error(f"Помилка запуску сервера: {e}")
+            pass
             
     def handle_client(self, client_socket):
         """Обробка клієнта"""
         try:
             self.smtp_session(client_socket)
         except Exception as e:
-            self.logger.error(f"Помилка обробки клієнта: {e}")
+            pass
         finally:
             try:
                 client_socket.close()
@@ -101,8 +94,6 @@ class FakeSSLSMTPServer:
                     
                     if not command:
                         continue
-                        
-                    self.logger.debug(f"Отримано команду: {command}")
                     
                     if in_data_mode:
                         lines = command.split('\n')
@@ -110,16 +101,13 @@ class FakeSSLSMTPServer:
                             line = line.strip('\r')
                             if line == ".":
                                 in_data_mode = False
-                                self.logger.debug("Отримано термінатор даних '.'")
                                 try:
                                     self.send_response(sock, "250 2.0.0 Повідомлення прийнято для доставки")
                                     self.process_email(email_data, mail_from, rcpt_to)
                                     email_data = ""
                                     mail_from = ""
                                     rcpt_to = []
-                                    self.logger.debug("Лист успішно оброблено")
                                 except Exception as e:
-                                    self.logger.error(f"Помилка обробки листа: {e}")
                                     self.send_response(sock, "450 4.0.0 Тимчасова помилка")
                                 break
                             else:
@@ -146,7 +134,6 @@ class FakeSSLSMTPServer:
                         
                     elif cmd == "AUTH":
                         auth_type = cmd_parts[1].upper() if len(cmd_parts) > 1 else "LOGIN"
-                        self.logger.debug(f"Автентифікація: {auth_type}")
                         
                         if auth_type == "LOGIN":
                             auth_stage = "username"
@@ -160,41 +147,28 @@ class FakeSSLSMTPServer:
                             self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                             
                     elif auth_stage == "username":
-                        try:
-                            username = base64.b64decode(command).decode('utf-8', errors='ignore')
-                            self.logger.debug(f"Користувач: {username}")
-                        except:
-                            self.logger.debug(f"Користувач (необроблений): {command}")
                         auth_stage = "password"
                         self.send_response(sock, "334 UGFzc3dvcmQ6")
                         
                     elif auth_stage == "password":
-                        try:
-                            password = base64.b64decode(command).decode('utf-8', errors='ignore')
-                            self.logger.debug(f"Пароль: {password}")
-                        except:
-                            self.logger.debug(f"Пароль (необроблений): {command}")
                         auth_stage = None
                         self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                         
                     elif cmd == "MAIL":
                         if "FROM:" in command.upper():
                             mail_from = command.split("FROM:", 1)[1].strip().strip("<>")
-                            self.logger.debug(f"Лист від: {mail_from}")
                         self.send_response(sock, "250 2.1.0 Добре")
                         
                     elif cmd == "RCPT":
                         if "TO:" in command.upper():
                             rcpt = command.split("TO:", 1)[1].strip().strip("<>")
                             rcpt_to.append(rcpt)
-                            self.logger.debug(f"Отримувач: {rcpt}")
                         self.send_response(sock, "250 2.1.5 Добре")
                         
                     elif cmd == "DATA":
                         self.send_response(sock, "354 Закінчіть дані з <CR><LF>.<CR><LF>")
                         in_data_mode = True
                         email_data = ""
-                        self.logger.debug("Перехід в режим отримання даних листа")
                         
                     elif cmd == "QUIT":
                         self.send_response(sock, "221 2.0.0 До побачення")
@@ -215,41 +189,33 @@ class FakeSSLSMTPServer:
                         self.send_response(sock, "214 2.0.0 Допомога доступна")
                         
                     else:
-                        self.logger.debug(f"Невідома команда: {command}")
                         self.send_response(sock, "250 2.0.0 Добре")
                         
                 except socket.timeout:
-                    self.logger.debug("Тайм-аут з'єднання")
                     break
                 except socket.error as e:
-                    self.logger.debug(f"Помилка сокета: {e}")
                     break
                 except Exception as e:
-                    self.logger.error(f"Помилка обробки команди: {e}")
                     try:
                         self.send_response(sock, "500 5.0.0 Помилка команди")
                     except:
                         pass
                     
         except Exception as e:
-            self.logger.error(f"Критична помилка SMTP сесії: {e}")
+            pass
     
     def send_response(self, sock, response):
         """Відправка відповіді клієнту"""
         try:
             full_response = response + "\r\n"
             sock.send(full_response.encode('utf-8'))
-            self.logger.debug(f"Відповідь: {response}")
         except Exception as e:
-            self.logger.error(f"Помилка відправки відповіді: {e}")
+            pass
     
     def process_email(self, email_data, mail_from, rcpt_to):
         """Обробка отриманого листа"""
         try:
-            self.logger.info(f"Обробляємо лист від {mail_from}")
-            
             if not email_data.strip():
-                self.logger.warning("Порожні дані листа")
                 return
             
             try:
@@ -259,24 +225,19 @@ class FakeSSLSMTPServer:
                 
                 body = self.extract_body(msg)
                 
-                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики тільки якщо включено відладку
-                if self.debug_files:
-                    with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
-                        f.write("=== RAW EMAIL BODY ===\n\n")
-                        f.write(body)
-                        f.write("\n\n" + "="*50 + "\n\n")
-                
-                self.logger.info(f"Тема: {subject}")
-                self.logger.info(f"Розмір тіла: {len(body)} символів")
+                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики
+                with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
+                    f.write("=== RAW EMAIL BODY ===\n\n")
+                    f.write(body)
+                    f.write("\n\n" + "="*50 + "\n\n")
                 
                 self.send_to_telegram(subject, sender, body)
                 
             except Exception as e:
-                self.logger.error(f"Помилка парсингу email: {e}")
                 self.send_to_telegram("Необроблені дані листа", mail_from or "невідомо", email_data[:3000])
             
         except Exception as e:
-            self.logger.error(f"Помилка обробки листа: {e}")
+            pass
     
     def decode_header(self, header_value):
         """Декодування заголовків email"""
@@ -299,7 +260,6 @@ class FakeSSLSMTPServer:
             
             return result
         except Exception as e:
-            self.logger.error(f"Помилка декодування заголовка: {e}")
             return str(header_value)
     
     def extract_body(self, msg):
@@ -341,7 +301,7 @@ class FakeSSLSMTPServer:
             return body_text if body_text.strip() else "Порожній вміст листа"
             
         except Exception as e:
-            self.logger.error(f"Помилка витягування тіла листа: {e}")
+            pass
         
         return "Не вдалося витягти вміст листа"
     
@@ -515,21 +475,18 @@ class FakeSSLSMTPServer:
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
-            # Тимчасово зберігаємо діагностику у файл тільки якщо включено відладку
-            if self.debug_files:
-                with open("sampo_debug.txt", "w", encoding="utf-8") as f:
-                    f.write("=== ДІАГНОСТИКА SAMPO ЗВІТУ ===\n\n")
-                    f.write("ПОЧАТКОВИЙ ТЕКСТ:\n")
-                    f.write(body)
-                    f.write("\n\n" + "="*50 + "\n\n")
-                    
-                    clean_body = self.clean_html(body)
-                    
-                    f.write("ПІСЛЯ ФОРМАТУВАННЯ:\n")
-                    f.write(clean_body)
-                    f.write("\n\n" + "="*50 + "\n\n")
-            else:
+            # Тимчасово зберігаємо діагностику у файл
+            with open("sampo_debug.txt", "w", encoding="utf-8") as f:
+                f.write("=== ДІАГНОСТИКА SAMPO ЗВІТУ ===\n\n")
+                f.write("ПОЧАТКОВИЙ ТЕКСТ:\n")
+                f.write(body)
+                f.write("\n\n" + "="*50 + "\n\n")
+                
                 clean_body = self.clean_html(body)
+                
+                f.write("ПІСЛЯ ФОРМАТУВАННЯ:\n")
+                f.write(clean_body)
+                f.write("\n\n" + "="*50 + "\n\n")
             
             header = "📊 **ЗВІТ SAMPO**\n\n"
             header += f"👤 **Від:** {sender}\n"
@@ -558,7 +515,7 @@ class FakeSSLSMTPServer:
                     self.send_telegram_message(part_message, i, len(parts))
                 
         except Exception as e:
-            self.logger.error(f"❌ Помилка відправки в Telegram: {e}")
+            pass
     
     def split_message(self, text, max_length):
         """Розбиття довгого тексту на частини"""
@@ -603,17 +560,12 @@ class FakeSSLSMTPServer:
             
             response = requests.post(url, data=payload, timeout=10)
             
-            if response.status_code == 200:
-                self.logger.info(f"✅ Частина {part_num}/{total_parts} відправлена в Telegram")
-            else:
-                self.logger.error(f"❌ Помилка Telegram API (частина {part_num}): {response.text}")
-                
             if part_num < total_parts:
                 import time
                 time.sleep(0.5)
                 
         except Exception as e:
-            self.logger.error(f"❌ Помилка відправки частини {part_num} в Telegram: {e}")
+            pass
     
     def stop(self):
         """Зупинка сервера"""
@@ -631,17 +583,9 @@ class SMTPBridgeApp:
         self.server_thread = None
         self.tray_icon = None
         
-        # Простіше логування без файлу
-        logging.basicConfig(
-            level=logging.ERROR,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[logging.StreamHandler()]
-        )
-        self.logger = logging.getLogger(__name__)
-        
         self.create_gui()
         
-        # Автозапуск сервера через 2 секунди після запуску
+        # Автозапуск сервера через 2 секунды после запуска
         if self.config.get("auto_start", True):
             self.root.after(2000, self.auto_start_server)
     
@@ -652,8 +596,7 @@ class SMTPBridgeApp:
             "telegram_chat_id": "",
             "smtp_host": "localhost", 
             "smtp_port": 25,
-            "auto_start": True,
-            "debug_files": False  # Новий параметр - за замовчуванням вимкнено
+            "auto_start": True
         }
         
         if os.path.exists(CONFIG_FILE):
@@ -674,13 +617,13 @@ class SMTPBridgeApp:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            self.logger.error(f"Помилка збереження: {e}")
+            pass
     
     def create_gui(self):
         """Створення інтерфейсу"""
         self.root = tk.Tk()
         self.root.title("SMTP-Telegram міст для касових звітів SAMPO")
-        self.root.geometry("800x450")
+        self.root.geometry("800x400")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -729,17 +672,6 @@ class SMTPBridgeApp:
         ttk.Checkbutton(auto_frame, text="Автозапуск SMTP сервера при відкритті програми (рекомендовано)", 
                        variable=self.auto_start_var).pack(anchor=tk.W)
         
-        # Відладочні файли
-        debug_frame = ttk.Frame(settings_frame)
-        debug_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
-        
-        self.debug_files_var = tk.BooleanVar(value=self.config.get("debug_files", False))
-        ttk.Checkbutton(debug_frame, text="Створювати відладочні файли (sampo_debug.txt, sampo_raw_debug.txt)", 
-                       variable=self.debug_files_var).pack(anchor=tk.W)
-        
-        ttk.Label(debug_frame, text="Вимкніть для економії місця, увімкніть тільки при проблемах з форматуванням", 
-                 font=('TkDefaultFont', 8), foreground='gray').pack(anchor=tk.W, padx=20)
-        
         settings_frame.columnconfigure(1, weight=1)
         
         # Кнопки управління
@@ -782,9 +714,7 @@ class SMTPBridgeApp:
                 host=self.config["smtp_host"],
                 port=port,
                 token=self.config["telegram_token"],
-                chat_id=self.config["telegram_chat_id"],
-                logger=self.logger,
-                debug_files=self.config.get("debug_files", False)  # Передаємо налаштування відладки
+                chat_id=self.config["telegram_chat_id"]
             )
             
             self.server_thread = threading.Thread(target=self.server.start, daemon=True)
@@ -792,15 +722,12 @@ class SMTPBridgeApp:
             
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
-            
-            debug_status = "з відладкою" if self.config.get("debug_files", False) else "без відладки"
-            self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} ({debug_status}) - готовий до прийому звітів")
+            self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} - готовий до прийому звітів")
             
         except ValueError:
             messagebox.showerror("Помилка", "Некоректний порт!")
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося запустити сервер: {e}")
-            self.logger.error(f"Помилка запуску: {e}")
     
     def stop_server(self):
         """Зупинка сервера"""
@@ -818,7 +745,6 @@ class SMTPBridgeApp:
             self.config["telegram_chat_id"] = self.chat_id_var.get().strip()
             self.config["smtp_port"] = int(self.port_var.get())
             self.config["auto_start"] = self.auto_start_var.get()
-            self.config["debug_files"] = self.debug_files_var.get()  # Зберігаємо налаштування відладки
             
             self.save_config()
             messagebox.showinfo("Успіх", "Налаштування збережено!")
