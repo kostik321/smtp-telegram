@@ -484,18 +484,7 @@ class FakeSSLSMTPServer:
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
-            # Тимчасово зберігаємо діагностику у файл
-            with open("sampo_debug.txt", "w", encoding="utf-8") as f:
-                f.write("=== ДІАГНОСТИКА SAMPO ЗВІТУ ===\n\n")
-                f.write("ПОЧАТКОВИЙ ТЕКСТ:\n")
-                f.write(body)
-                f.write("\n\n" + "="*50 + "\n\n")
-                
-                clean_body = self.clean_html(body)
-                
-                f.write("ПІСЛЯ ФОРМАТУВАННЯ:\n")
-                f.write(clean_body)
-                f.write("\n\n" + "="*50 + "\n\n")
+            clean_body = self.clean_html(body)
             
             header = "📊 **ЗВІТ SAMPO**\n\n"
             header += f"👤 **Від:** {sender}\n"
