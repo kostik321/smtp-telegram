@@ -10,7 +10,7 @@ import json
 import os
 import logging
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox
 import base64
 import re
 
@@ -99,7 +99,7 @@ class FakeSSLSMTPServer:
                     if not command:
                         continue
                         
-                    self.logger.info(f"Отримано команду: {command}")
+                    self.logger.debug(f"Отримано команду: {command}")
                     
                     if in_data_mode:
                         lines = command.split('\n')
@@ -107,14 +107,14 @@ class FakeSSLSMTPServer:
                             line = line.strip('\r')
                             if line == ".":
                                 in_data_mode = False
-                                self.logger.info("Отримано термінатор даних '.'")
+                                self.logger.debug("Отримано термінатор даних '.'")
                                 try:
                                     self.send_response(sock, "250 2.0.0 Повідомлення прийнято для доставки")
                                     self.process_email(email_data, mail_from, rcpt_to)
                                     email_data = ""
                                     mail_from = ""
                                     rcpt_to = []
-                                    self.logger.info("Лист успішно оброблено")
+                                    self.logger.debug("Лист успішно оброблено")
                                 except Exception as e:
                                     self.logger.error(f"Помилка обробки листа: {e}")
                                     self.send_response(sock, "450 4.0.0 Тимчасова помилка")
@@ -143,7 +143,7 @@ class FakeSSLSMTPServer:
                         
                     elif cmd == "AUTH":
                         auth_type = cmd_parts[1].upper() if len(cmd_parts) > 1 else "LOGIN"
-                        self.logger.info(f"Автентифікація: {auth_type}")
+                        self.logger.debug(f"Автентифікація: {auth_type}")
                         
                         if auth_type == "LOGIN":
                             auth_stage = "username"
@@ -159,39 +159,39 @@ class FakeSSLSMTPServer:
                     elif auth_stage == "username":
                         try:
                             username = base64.b64decode(command).decode('utf-8', errors='ignore')
-                            self.logger.info(f"Користувач: {username}")
+                            self.logger.debug(f"Користувач: {username}")
                         except:
-                            self.logger.info(f"Користувач (необроблений): {command}")
+                            self.logger.debug(f"Користувач (необроблений): {command}")
                         auth_stage = "password"
                         self.send_response(sock, "334 UGFzc3dvcmQ6")
                         
                     elif auth_stage == "password":
                         try:
                             password = base64.b64decode(command).decode('utf-8', errors='ignore')
-                            self.logger.info(f"Пароль: {password}")
+                            self.logger.debug(f"Пароль: {password}")
                         except:
-                            self.logger.info(f"Пароль (необроблений): {command}")
+                            self.logger.debug(f"Пароль (необроблений): {command}")
                         auth_stage = None
                         self.send_response(sock, "235 2.7.0 Автентифікація успішна")
                         
                     elif cmd == "MAIL":
                         if "FROM:" in command.upper():
                             mail_from = command.split("FROM:", 1)[1].strip().strip("<>")
-                            self.logger.info(f"Лист від: {mail_from}")
+                            self.logger.debug(f"Лист від: {mail_from}")
                         self.send_response(sock, "250 2.1.0 Добре")
                         
                     elif cmd == "RCPT":
                         if "TO:" in command.upper():
                             rcpt = command.split("TO:", 1)[1].strip().strip("<>")
                             rcpt_to.append(rcpt)
-                            self.logger.info(f"Отримувач: {rcpt}")
+                            self.logger.debug(f"Отримувач: {rcpt}")
                         self.send_response(sock, "250 2.1.5 Добре")
                         
                     elif cmd == "DATA":
                         self.send_response(sock, "354 Закінчіть дані з <CR><LF>.<CR><LF>")
                         in_data_mode = True
                         email_data = ""
-                        self.logger.info("Перехід в режим отримання даних листа")
+                        self.logger.debug("Перехід в режим отримання даних листа")
                         
                     elif cmd == "QUIT":
                         self.send_response(sock, "221 2.0.0 До побачення")
@@ -212,14 +212,14 @@ class FakeSSLSMTPServer:
                         self.send_response(sock, "214 2.0.0 Допомога доступна")
                         
                     else:
-                        self.logger.info(f"Невідома команда: {command}")
+                        self.logger.debug(f"Невідома команда: {command}")
                         self.send_response(sock, "250 2.0.0 Добре")
                         
                 except socket.timeout:
-                    self.logger.info("Тайм-аут з'єднання")
+                    self.logger.debug("Тайм-аут з'єднання")
                     break
                 except socket.error as e:
-                    self.logger.info(f"Помилка сокета: {e}")
+                    self.logger.debug(f"Помилка сокета: {e}")
                     break
                 except Exception as e:
                     self.logger.error(f"Помилка обробки команди: {e}")
@@ -243,7 +243,7 @@ class FakeSSLSMTPServer:
     def process_email(self, email_data, mail_from, rcpt_to):
         """Обробка отриманого листа"""
         try:
-            self.logger.info(f"Обробляємо лист від {mail_from} для {rcpt_to}")
+            self.logger.info(f"Обробляємо лист від {mail_from}")
             
             if not email_data.strip():
                 self.logger.warning("Порожні дані листа")
@@ -257,7 +257,6 @@ class FakeSSLSMTPServer:
                 body = self.extract_body(msg)
                 
                 self.logger.info(f"Тема: {subject}")
-                self.logger.info(f"Від: {sender}")
                 self.logger.info(f"Розмір тіла: {len(body)} символів")
                 
                 self.send_to_telegram(subject, sender, body)
@@ -396,6 +395,7 @@ class FakeSSLSMTPServer:
         lines = text.split('\n')
         formatted_lines = []
         in_table = False
+        table_header_found = False
         
         for line in lines:
             line = line.strip()
@@ -429,7 +429,7 @@ class FakeSSLSMTPServer:
                 continue
             elif line.startswith('Период:'):
                 period = line.replace('Период:', '').strip()
-                formatted_lines.append(f"🗓 **Період:** {period}")
+                formatted_lines.append(f"🗓 **Période:** {period}")
                 continue
                 
             # Продажі секція
@@ -469,35 +469,41 @@ class FakeSSLSMTPServer:
                 formatted_lines.append(f"\n🛒 **ЗВІТ ПО ТОВАРАХ**")
                 continue
                 
-            # Заголовок таблиці товарів
-            if '№' in line and 'Имя' in line and 'К-во' in line:
+            # Заголовок таблиці товарів - шукаємо рядок з № | Имя | К-во | Стоимость | Прибыль
+            if '№' in line and 'Имя' in line and ('К-во' in line or 'Стоимость' in line or 'Прибыль' in line):
                 formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 formatted_lines.append("📋 **СПИСОК ТОВАРІВ:**")
                 formatted_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 in_table = True
+                table_header_found = True
                 continue
                 
-            # Рядки товарів у таблиці
-            if in_table and '|' in line and line.strip().split('|')[0].strip().isdigit():
+            # Рядки товарів у таблиці - шукаємо формат "число | назва | кількість | вартість | прибуток"
+            if in_table and '|' in line:
                 parts = [p.strip() for p in line.split('|') if p.strip()]
+                
+                # Перевіряємо чи перший елемент - це номер товару
                 if len(parts) >= 4:
                     try:
-                        num = parts[0]
-                        name = parts[1]
-                        qty = parts[2]
-                        cost = parts[3]
-                        profit = parts[4] if len(parts) > 4 else "—"
-                        
-                        # Скорочуємо назву якщо дуже довга
-                        if len(name) > 35:
-                            name = name[:32] + "..."
+                        # Перевіряємо чи перший елемент може бути числом
+                        first_part = parts[0].strip()
+                        if first_part.isdigit() or (first_part and first_part[0].isdigit()):
+                            num = first_part
+                            name = parts[1]
+                            qty = parts[2] if len(parts) > 2 else "—"
+                            cost = parts[3] if len(parts) > 3 else "—"
+                            profit = parts[4] if len(parts) > 4 else "—"
                             
-                        formatted_lines.append(f"\n`{num:>2}.` **{name}**")
-                        formatted_lines.append(f"   📦 Кількість: `{qty}`")
-                        formatted_lines.append(f"   💵 Вартість: `{cost}`")
-                        formatted_lines.append(f"   📈 Прибуток: `{profit}`")
-                        formatted_lines.append("   ────────────────────────────")
-                        continue
+                            # Скорочуємо назву якщо дуже довга
+                            if len(name) > 35:
+                                name = name[:32] + "..."
+                                
+                            formatted_lines.append(f"\n`{num:>2}.` **{name}**")
+                            formatted_lines.append(f"   📦 Кількість: `{qty}`")
+                            formatted_lines.append(f"   💵 Вартість: `{cost}`")
+                            formatted_lines.append(f"   📈 Прибуток: `{profit}`")
+                            formatted_lines.append("   ────────────────────────────")
+                            continue
                     except (IndexError, ValueError):
                         pass
                         
@@ -510,8 +516,12 @@ class FakeSSLSMTPServer:
                     formatted_lines.append("═" * 40)
                 continue
                 
-            # Інші рядки без змін
-            if line not in ['', ' ']:
+            # Інші рядки - якщо ми в таблиці товарів, але рядок не підходить під формат таблиці
+            if in_table and not table_header_found:
+                # Можливо це інший формат рядка товарів, додаємо як є
+                formatted_lines.append(line)
+            elif not in_table:
+                # Звичайні рядки поза таблицею
                 formatted_lines.append(line)
         
         return '\n'.join(formatted_lines)
@@ -519,18 +529,12 @@ class FakeSSLSMTPServer:
     def send_to_telegram(self, subject, sender, body):
         """Відправка в Telegram з розбиттям на частини"""
         try:
-            # Логування для відстеження
-            self.logger.info(f"Початковий текст містить: {len(body)} символів")
-            self.logger.info(f"Перевірка на SAMPO: {'SAMPO Reports' in body}")
-            
-            # Логування перших 500 символів для аналізу структури
-            self.logger.info(f"Початок тексту: {body[:500]}")
+            # Логування початкового тексту для діагностики
+            print(f"Початковий текст (перші 500 символів): {body[:500]}")
             
             clean_body = self.clean_html(body)
             
-            self.logger.info(f"Після форматування: {len(clean_body)} символів")
-            # Логування результату форматування
-            self.logger.info(f"Форматований текст (перші 800 символів): {clean_body[:800]}")
+            print(f"Після форматування (перші 800 символів): {clean_body[:800]}")
             
             header = "📊 **ЗВІТ SAMPO**\n\n"
             header += f"👤 **Від:** {sender}\n"
@@ -630,20 +634,17 @@ class SMTPBridgeApp:
         self.config = self.load_config()
         self.server = None
         self.server_thread = None
+        self.tray_icon = None
         
+        # Простіше логування без файлу
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.ERROR,
             format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler('smtp_bridge.log', encoding='utf-8'),
-                logging.StreamHandler()
-            ]
+            handlers=[logging.StreamHandler()]
         )
         self.logger = logging.getLogger(__name__)
         
         self.create_gui()
-        
-        self.tray_icon = None
         
         # Автозапуск сервера через 2 секунди після запуску
         if self.config.get("auto_start", True):
@@ -746,8 +747,6 @@ class SMTPBridgeApp:
         
         ttk.Button(buttons_frame, text="Зберегти", command=self.save_settings).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Тест Telegram", command=self.test_telegram).pack(side=tk.LEFT, padx=5)
-        ttk.Button(buttons_frame, text="Очистити логи", command=self.clear_logs).pack(side=tk.LEFT, padx=5)
-        ttk.Button(buttons_frame, text="Копіювати всі логи", command=self.copy_all_logs).pack(side=tk.LEFT, padx=5)
         
         # Кнопки роботи з трей та автозавантаженням
         tray_buttons_frame = ttk.Frame(self.root)
@@ -757,21 +756,11 @@ class SMTPBridgeApp:
         ttk.Button(tray_buttons_frame, text="Додати в автозавантаження", command=self.add_to_startup).pack(side=tk.LEFT, padx=5)
         ttk.Button(tray_buttons_frame, text="Прибрати з автозавантаження", command=self.remove_from_startup).pack(side=tk.LEFT, padx=5)
         
-        # Логи
-        logs_frame = ttk.LabelFrame(self.root, text=f"Логи роботи - {self.log_file_path}")
-        logs_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.log_text = scrolledtext.ScrolledText(logs_frame, height=20, font=("Consolas", 9))
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
         # Статус
         self.status_var = tk.StringVar()
         self.status_var.set("Зупинено - очікування автозапуску...")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # Автооновлення логів
-        self.refresh_logs()
     
     def start_server(self):
         """Запуск сервера"""
@@ -796,12 +785,6 @@ class SMTPBridgeApp:
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
             self.status_var.set(f"✅ SMTP сервер запущено на localhost:{port} - готовий до прийому звітів")
-            
-            messagebox.showinfo("Успіх", 
-                f"SMTP сервер запущено на порту {port}!\n\n"
-                f"Тепер каса SAMPO може відправляти звіти на localhost:{port}\n"
-                f"Довгі звіти будуть автоматично розбиватися на частини для зручності читання в Telegram."
-            )
             
         except ValueError:
             messagebox.showerror("Помилка", "Некоректний порт!")
@@ -864,48 +847,6 @@ class SMTPBridgeApp:
         except Exception as e:
             messagebox.showerror("Помилка", f"Помилка підключення: {e}")
     
-    def clear_logs(self):
-        """Повна очистка логів"""
-        try:
-            self.log_text.delete(1.0, tk.END)
-            
-            if os.path.exists('smtp_bridge.log'):
-                os.remove('smtp_bridge.log')
-                
-            with open('smtp_bridge.log', 'w', encoding='utf-8') as f:
-                f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - Логи очищено\n")
-            
-            self.log_text.insert(tk.END, f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Логи очищено\n")
-            messagebox.showinfo("Успіх", "Логи повністю очищено!")
-            
-        except Exception as e:
-            messagebox.showerror("Помилка", f"Помилка очищення логів: {e}")
-    
-    def copy_all_logs(self):
-        """Копіювання всіх логів у буфер обміну"""
-        try:
-            logs_content = ""
-            
-            if os.path.exists('smtp_bridge.log'):
-                with open('smtp_bridge.log', 'r', encoding='utf-8') as f:
-                    logs_content = f.read()
-            
-            if not logs_content:
-                logs_content = self.log_text.get(1.0, tk.END)
-            
-            if logs_content.strip():
-                self.root.clipboard_clear()
-                self.root.clipboard_append(logs_content)
-                self.root.update()
-                
-                lines_count = len(logs_content.split('\n'))
-                messagebox.showinfo("Успіх", f"Всі логи скопійовано у буфер обміну!\nРядків: {lines_count}")
-            else:
-                messagebox.showwarning("Попередження", "Логи порожні, нічого копіювати")
-                
-        except Exception as e:
-            messagebox.showerror("Помилка", f"Помилка копіювання логів: {e}")
-    
     def minimize_to_tray(self):
         """Згортання в системний трей"""
         try:
@@ -939,7 +880,7 @@ class SMTPBridgeApp:
             
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
             
-            self.logger.info("Програма згорнута в системний трей")
+            print("Програма згорнута в системний трей")
             
         except ImportError:
             messagebox.showerror("Помилка", "Бібліотека pystray не знайдена!\nСистемний трей недоступний.")
@@ -979,10 +920,9 @@ class SMTPBridgeApp:
             
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
             
-            self.logger.info("Програма автоматично згорнута в системний трей")
+            print("Програма автоматично згорнута в системний трей")
             
         except:
-            # Якщо не вдається згорнути в трей - просто продовжуємо без помилок
             pass
     
     def show_from_tray(self, icon=None, item=None):
@@ -1024,11 +964,9 @@ class SMTPBridgeApp:
             winreg.CloseKey(key)
             
             messagebox.showinfo("Успіх", "Програма додана в автозавантаження Windows!")
-            self.logger.info("Програма додана в автозавантаження")
             
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося додати в автозавантаження: {e}")
-            self.logger.error(f"Помилка додавання в автозавантаження: {e}")
     
     def remove_from_startup(self):
         """Видалення з автозавантаження Windows"""
@@ -1041,7 +979,6 @@ class SMTPBridgeApp:
             try:
                 winreg.DeleteValue(key, "SMTP-Telegram-Bridge-SAMPO")
                 messagebox.showinfo("Успіх", "Програма видалена з автозавантаження Windows!")
-                self.logger.info("Програма видалена з автозавантаження")
             except FileNotFoundError:
                 messagebox.showinfo("Інформація", "Програма не була в автозавантаженні")
             
@@ -1049,7 +986,6 @@ class SMTPBridgeApp:
             
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося видалити з автозавантаження: {e}")
-            self.logger.error(f"Помилка видалення з автозавантаження: {e}")
     
     def on_closing(self):
         """Обробка закриття вікна"""
@@ -1073,36 +1009,13 @@ class SMTPBridgeApp:
         """Автоматичний запуск сервера"""
         if not self.server and self.config.get("auto_start", True):
             if self.config["telegram_token"] and self.config["telegram_chat_id"]:
-                self.logger.info("Автозапуск SMTP сервера...")
+                print("Автозапуск SMTP сервера...")
                 self.start_server()
+                
+                # Автоматично згортаємо в трей після запуску сервера
+                self.root.after(1000, self.silent_minimize_to_tray)
             else:
                 self.status_var.set("❌ Автозапуск неможливий - не вказано Token або Chat ID")
-                messagebox.showwarning("Попередження", 
-                    "Автозапуск SMTP сервера неможливий!\n\n"
-                    "Будь ласка, введіть Telegram Bot Token та Chat ID у налаштуваннях, "
-                    "збережіть їх, а потім запустіть сервер вручну або перезапустіть програму."
-                )
-    
-    def refresh_logs(self):
-        """Автооновлення логів"""
-        try:
-            if os.path.exists('smtp_bridge.log'):
-                with open('smtp_bridge.log', 'r', encoding='utf-8') as f:
-                    logs = f.readlines()
-                    
-                recent_logs = logs[-100:] if len(logs) > 100 else logs
-                
-                current_content = self.log_text.get(1.0, tk.END)
-                new_content = ''.join(recent_logs)
-                
-                if new_content != current_content.strip():
-                    self.log_text.delete(1.0, tk.END)
-                    self.log_text.insert(tk.END, new_content)
-                    self.log_text.see(tk.END)
-        except:
-            pass
-        
-        self.root.after(2000, self.refresh_logs)
     
     def run(self):
         """Запуск застосунку"""
