@@ -234,12 +234,6 @@ class FakeSSLSMTPServer:
                 
                 body = self.extract_body(msg)
                 
-                # Зберігаємо ПОЧАТКОВИЙ RAW текст для діагностики
-                with open("sampo_raw_debug.txt", "w", encoding="utf-8") as f:
-                    f.write("=== RAW EMAIL BODY ===\n\n")
-                    f.write(body)
-                    f.write("\n\n" + "="*50 + "\n\n")
-                
                 self.send_to_telegram(subject, sender, body)
                 
             except Exception as e:
@@ -394,7 +388,7 @@ class FakeSSLSMTPServer:
                 continue
             elif line.startswith('Организации:'):
                 org_name = line.replace('Организации:', '').strip()
-                formatted_lines.append(f"🏢 **Organisation:** {org_name}")
+                formatted_lines.append(f"🏢 **Organisacija:** {org_name}")
                 continue
             elif line.startswith('Склады:'):
                 warehouse = line.replace('Склады:', '').strip()
@@ -450,7 +444,7 @@ class FakeSSLSMTPServer:
                         formatted_lines.append(f"   📦 Кількість: `{qty}`")
                         formatted_lines.append(f"   💵 Вартість: `{cost}`")
                         formatted_lines.append(f"   📈 Прибуток: `{profit}`")
-                        # ВИДАЛЕНО підкреслення: formatted_lines.append("   ────────────────────────────")
+                        formatted_lines.append("   ────────────────────────────")
                         continue
                     
                     # Звичайні дані (Сумма, Скидка, тощо)
@@ -824,8 +818,6 @@ class SMTPBridgeApp:
             
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
             
-            print("Програма згорнута в системний трей")
-            
         except ImportError:
             messagebox.showerror("Помилка", "Бібліотека pystray не знайдена!\nСистемний трей недоступний.")
         except Exception as e:
@@ -863,8 +855,6 @@ class SMTPBridgeApp:
             self.root.withdraw()
             
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
-            
-            print("Програма автоматично згорнута в системний трей")
             
         except:
             pass
@@ -953,7 +943,6 @@ class SMTPBridgeApp:
         """Автоматичний запуск сервера"""
         if not self.server and self.config.get("auto_start", True):
             if self.config["telegram_token"] and self.config["telegram_chat_id"]:
-                print("Автозапуск SMTP сервера...")
                 self.start_server()
                 
                 # Автоматично згортаємо в трей після запуску сервера
