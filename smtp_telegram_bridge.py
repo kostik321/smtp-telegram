@@ -1007,6 +1007,9 @@ class SMTPBridgeApp:
     
     def on_closing(self):
         """Обробка закриття вікна"""
+        # Автоматично зберігаємо налаштування перед закриттям
+        self.auto_save_settings()
+        
         result = messagebox.askyesnocancel(
             "Вихід", 
             "Що ви хочете зробити?\n\n"
