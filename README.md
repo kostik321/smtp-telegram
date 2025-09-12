@@ -53,7 +53,7 @@ netsh advfirewall firewall add rule name="SMTP Port 25" dir=in action=allow prot
 1. Створіть бота у Telegram через [@BotFather](https://t.me/BotFather):
    - Відправте `/newbot`
    - Дайте ім'я боту (наприклад, "SAMPO Reports Bot")
-   - Скопіюйте Token (схожий на `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11`)
+   - Скопіюйте Token (схожий на `123456:ABC-DEF1234g0000000000000`)
 
 2. Отримайте Chat ID:
    - Додайте бота в чат/канал або напишіть йому особисто
