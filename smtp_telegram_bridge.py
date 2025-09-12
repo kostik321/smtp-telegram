@@ -550,7 +550,7 @@ class FakeSSLSMTPServer:
                 'parse_mode': 'Markdown'
             }
             
-            response = requests.post(url, data=payload, timeout=10)
+            response = requests.post(url, data=payload, timeout=30)
             
             if part_num < total_parts:
                 import time
